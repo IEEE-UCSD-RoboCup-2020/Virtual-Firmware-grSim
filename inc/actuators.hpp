@@ -15,6 +15,7 @@ private:
     io_service *ios;
     udp::endpoint *ep;
     socket_ptr socket;
+    boost::mutex mu;
 
 public:
     GrSim_Console(io_service& io_srvs, udp::endpoint& endpoint);
@@ -49,14 +50,12 @@ private:
     unsigned int ctrl_period_ms = 10; // milliseconds  
     timer_ptr timer;
 
-    arma::vec unit_vec_A = {0, 0}; // left-upper direction
-    arma::vec unit_vec_B = {0, 0}; // right upper direction
-    double max_trans = 0.00;
-    double max_rot = 0.00;
-    bool param_loaded = false;
-
     void send_cmd_thread(udp::endpoint& c_ep);
     void timer_expire_callback();
+    
+    // To-do:
+    float max_possible_speed(arma::vec direction);
+    
 
 public:
     float wheel_upper_left_vel = 0.00, 
@@ -67,12 +66,16 @@ public:
     bool dribbler_on = false;
 
     Actuator_System(team_color_t color, int robot_id, udp::endpoint& grsim_console_ep);
-    void load_robot_params(arma::vec left_vec, arma::vec right_vec, 
-                           double max_trans_mms, double max_rotat_ds);
+
     void set_ctrl_freq(float freq_Hz);
     void set_ctrl_period(float period_ms);
 
-    // unit: rad/s
+    /*
+     * Set motor "target speed" (not immediate speed, acceleration is needed), 
+     * which is essentially motor output pwr (or acceleration that's not constant, 
+     * the smaller the gap between the target and current speed, the smaller the acceleration)
+     * unit: rad/s
+     */
     inline void set_wheels_speeds(float upper_left, float lower_left, 
                                   float lower_right, float upper_right) {
         wheel_upper_left_vel = upper_left;
@@ -89,12 +92,26 @@ public:
     }
     
     void stop();
-    void rotate(float angular_velocity); 
-    void move(arma::vec vec_2d); // cartesian vector
-    void move(float angle, float speed); // polor coord
 
-    /* Note: when coupled with pid, move is called by mobilize & sprint
-     */
+
+    /* 
+    * (check the comment for "set_wheels_speeds" function in hpp first)
+    * Using a 3D vector (x,y,w) to represent a movement towards
+    * a target linear velocity with direction and magnitude of vector (x,y),
+    * and at same time a angular velocity with direction(+/-) and magnitude of scalar w
+    * The unit for the magnitude quantification is represented in percentage of max speed
+    * The net magnitude of this 3D vector must not be greater than 100.00f which corresponds to 100% of motor pwr
+    * (think about why having a nonzero angular speed decreases the max possible linear speed)
+    * Example1: (0.00, 100.00, 0.00) sets the robot to move forward at full speed
+    * Example2: (100.00, 0.00, 0.00) sets the robot to move right at fulll speed
+    * Example3: (0.00, 0.00, 100.00) sets the robot to rotate left at full speed
+    * and this method also allow a robot to move linearly & angularly at the same time to 
+    * produce a curved motion.
+    * Underline assumption: linear & angular motion are linearly independent  
+    */
+    void move(arma::vec pwr_vec_3D);
+
+
 
 
 };

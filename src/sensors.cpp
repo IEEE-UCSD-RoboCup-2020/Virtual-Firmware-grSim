@@ -81,6 +81,15 @@ void GrSim_Vision::receive_packet() {
     }
 }
 
+
+void GrSim_Vision::async_receive_packet() {
+    
+    socket->async_receive_from(asio::buffer(*receive_buffer), *ep,
+        boost::bind(&GrSim_Vision::on_receive_packet, this,
+        asio::placeholders::bytes_transferred, asio::placeholders::error)
+    );
+}
+
 void GrSim_Vision::on_receive_packet(std::size_t num_bytes_received,
                                      const boost::system::error_code& error) 
 {    
@@ -100,73 +109,54 @@ void GrSim_Vision::on_receive_packet(std::size_t num_bytes_received,
     publish_robots_vinfo(packet.detection().robots_blue(), BLUE);
     publish_robots_vinfo(packet.detection().robots_yellow(), YELLOW);
 
+    // To-do add publish ball vinfo
+
     // start the next receive cycle
     this->async_receive_packet();
 }
 
-void GrSim_Vision::async_receive_packet() {
-    
-    socket->async_receive_from(asio::buffer(*receive_buffer), *ep,
-        boost::bind(&GrSim_Vision::on_receive_packet, this,
-        asio::placeholders::bytes_transferred, asio::placeholders::error)
-    );
-}
 
 
 
-vec& GrSim_Vision::get_robot_loc_vec(team_color_t color, int robot_id) {
-    return color == BLUE ? GrSim_Vision::blue_loc_vecs[robot_id] 
-                         : GrSim_Vision::yellow_loc_vecs[robot_id];
-}
 
 vec GrSim_Vision::get_robot_location(team_color_t color, int robot_id) {
-    
+    mu.lock();
+    vec location;
     if(color == BLUE) {
-        vec location = {GrSim_Vision::blue_loc_vecs[robot_id](0), 
+        location = {GrSim_Vision::blue_loc_vecs[robot_id](0), 
                         GrSim_Vision::blue_loc_vecs[robot_id](1)};
-        return location;
     }
     else {
-        vec location = {GrSim_Vision::yellow_loc_vecs[robot_id](0), 
+        location = {GrSim_Vision::yellow_loc_vecs[robot_id](0), 
                         GrSim_Vision::yellow_loc_vecs[robot_id](1)};
-        return location;
     }
+    mu.unlock();
+    return location;
 }
 
 float GrSim_Vision::get_robot_orientation(team_color_t color, int robot_id) {
-    return color == BLUE ? to_degree( GrSim_Vision::blue_loc_vecs[robot_id](2) ) 
+    mu.lock();
+    float ret = color == BLUE ? to_degree( GrSim_Vision::blue_loc_vecs[robot_id](2) ) 
                          : to_degree( GrSim_Vision::yellow_loc_vecs[robot_id](2) );
+    mu.unlock();
+    return ret;
 }
 
 
+
+
+
+/*
+// for debugging only
 void GrSim_Vision::print_robot_vinfo(const SSL_DetectionRobot& robot) {
-    // To-do : format string alignment
     std::cout << "ID[" << robot.robot_id() << "] "
                 << "[<x,y>:(" << robot.x() << ", " << robot.y() << ")]"
                 << "orien[" << robot.orientation() << "] "
                 << "confidence[" << robot.confidence() << "]"
                 << std::endl;
 } 
+*/
 
-
-arma::vec* GrSim_Vision::get_robots_loc_vecs(team_color_t color) {
-    return color == BLUE ? GrSim_Vision::blue_loc_vecs
-                         : GrSim_Vision::yellow_loc_vecs;
-}
-
-std::ostream& operator<<(std::ostream& os, const arma::vec& v)
-{
-    char fmt_str[15]; // not so important size, greater than printed str size is fine, use magic number here 
-    int num_rows = arma::size(v).n_rows;
-    os << "<";
-    for(int i = 0; i < num_rows; i++) {
-        sprintf(fmt_str, "%8.3lf", v(i));
-        os << std::string(fmt_str);
-        if(i != num_rows - 1) os << ", ";
-    }
-    os << ">";
-    return os;
-}
 
 // ==================================================================================================== //
 
@@ -210,10 +200,7 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
 }
 
 
-// unsorted raw vector
-arma::vec& Sensor_System::get_raw_location_vector() {
-    return this->vision->get_robot_loc_vec(this->color, this->id);
-}
+
 
 
 void Sensor_System::init() {
@@ -258,15 +245,20 @@ float Sensor_System::get_rotational_displacement() {
 /* get the translational velocity vector, simulating encoder sensor
    unit: mm/s */
 arma::vec Sensor_System::get_translational_velocity() {
-    /* measurement taken in a concurrently running thread, 
-     * returned by copy so no need to worry about mutex locks */
-    return this->vec_v * 1000.00; // convert from m/s to mm/s
+    /* measurement taken in a concurrently running thread */
+    mu.lock();
+    auto ret = this->vec_v * 1000.00; // convert from m/s to mm/s
+    mu.unlock();
+    return ret;
 }
 
 /* get the rotational speed, simulating EKF[Gyro within IMU + Encoder estimation]
    unit: degree/s */
 float Sensor_System::get_rotational_velocity() {
-    return this->omega * 1000.00;
+    mu.lock();
+    auto ret = this->omega * 1000.00;
+    mu.unlock();
+    return ret;
 }
 
 
@@ -295,10 +287,11 @@ void Sensor_System::timer_expire_callback() {
         prev_millis = millis();
         prev_millis2 = millis();
         is_first_time = false;
+
+        this->mu.unlock(); // don't forget to unlock before function returns!
         // start the next timer cycle
         this->timer->expires_from_now(milliseconds(sample_period_ms));
         this->timer->async_wait(boost::bind(&Sensor_System::timer_expire_callback, this));
-        this->mu.unlock(); // don't forget to unlock before function returns!
         return;
     }
 
@@ -307,10 +300,11 @@ void Sensor_System::timer_expire_callback() {
     // std::cout << disp_diff << std::endl; // debug
     if( disp_diff(0) >= -zero_thresh && disp_diff(0) <= zero_thresh &&
        disp_diff(1) >= -zero_thresh && disp_diff(1) <= zero_thresh && cnt1 < cnt_thresh){ 
+        // if delta is too small to be meaningful
         cnt1++;
     }
     else {
-        // if delta is too small to be meaningful
+        
         this->vec_v = (disp_diff) / (millis() - prev_millis);
         prev_vec_d = curr_vec_d;
         prev_millis = millis();

@@ -8,6 +8,7 @@ using namespace boost;
 using namespace boost::asio;
 using namespace arma;
 typedef boost::asio::ip::udp udp;
+typedef boost::asio::ip::tcp tcp;
 
 
 /* Some constants:
@@ -16,35 +17,18 @@ typedef boost::asio::ip::udp udp;
  */
 
 
-double millis_wrapper() { return (double)millis();}
+std::ostream& operator<<(std::ostream& os, const arma::vec& v);
+
 
 int main(int argc, char **argv) {
 
  
 
-/*
-    PID_Controller<double> pid_test(0.00, 1.00, 0.00);
-    // pid_test.init(&millis_wrapper);
-    pid_test.init(100); // 100Hz --> 10ms period
-    // pid_test.set_output_range(-100, 100);
-    double curr_error;
-    while(1) {
-        std::cin >> curr_error;
-        std::cout << " :: "<< pid_test.calculate(curr_error) << std::endl;
-    }
-*/
-
-
-    
-    boost::mutex mu;
-    udp::endpoint grsim_ssl_vision_ep(ip::address::from_string("224.5.23.3"), 10020);
+    udp::endpoint grsim_ssl_vision_ep(ip::address::from_string("224.5.23.2"), 10020);
     udp::endpoint grsim_console_ep(ip::address::from_string(LOCAL_HOST), 20011);
     
     Sensor_System sensors(BLUE, 0, grsim_ssl_vision_ep);
     Actuator_System actuators(BLUE, 0, grsim_console_ep);
-    actuators.load_robot_params(arma::vec("-1 1"),
-                                arma::vec( "1 1"),
-                                0.00, 0.00);
 
     delay(500); 
     sensors.init();
@@ -73,7 +57,8 @@ int main(int argc, char **argv) {
         while(millis() - t0 < 100) actuators.stop();
     }
 
-/*s
+/*
+    boost::mutex mu;
     boost::thread *threads[6];
     for(int i = 0; i < 6; i++) {
         threads[i] = new boost::thread( [i, &mu] () -> void  {
@@ -107,6 +92,21 @@ int main(int argc, char **argv) {
     return 0;
 }
 
+
+
+std::ostream& operator<<(std::ostream& os, const arma::vec& v)
+{
+    char fmt_str[15]; // not so important size, greater than printed str size is fine, use magic number here 
+    int num_rows = arma::size(v).n_rows;
+    os << "<";
+    for(int i = 0; i < num_rows; i++) {
+        sprintf(fmt_str, "%8.3lf", v(i));
+        os << std::string(fmt_str);
+        if(i != num_rows - 1) os << ", ";
+    }
+    os << ">";
+    return os;
+}
 
 /*
  * Armadillo C++ library Citation:
