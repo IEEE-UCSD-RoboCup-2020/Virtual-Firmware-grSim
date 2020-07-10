@@ -47,10 +47,14 @@ int main(int argc, char **argv) {
             v = sensors.get_translational_velocity();
             theta = sensors.get_rotational_displacement();
             omega = sensors.get_rotational_velocity();
-            if(!arma::approx_equal(v, prev_v, "absdiff", 0,00001) || omega != prev_omega ) { 
-                std::cout << d << " " << v << " "
-                          << theta << " " << omega << " " << std::endl; 
-            }
+            /*if(!arma::approx_equal(v, prev_v, "absdiff", 0,00001) || omega != prev_omega ) { 
+                std::cout << d << " " 
+                          // << v << " "
+                          << theta << " " 
+                          // << omega 
+                          << " time: " << millis() - t0 << " ms" << std::endl;  
+            }*/
+            delay(1);
             prev_d = d; prev_v = v; prev_theta = theta; prev_omega = omega;
         }
         t0 = millis();

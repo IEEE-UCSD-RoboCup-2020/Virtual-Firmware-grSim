@@ -24,18 +24,24 @@ class GrSim_Vision {
         udp::endpoint *local_listen_ep;
         boost::mutex mu;
 
-        
+        std::vector<boost::function<void(void)>> on_packet_received_callbacks;
 
         void publish_robots_vinfo(const google::protobuf::RepeatedPtrField<SSL_DetectionRobot>& robots,
                                 team_color_t team_color);
 
-        void on_receive_packet(std::size_t num_bytes_received,
+        void async_receive_handler(std::size_t num_bytes_received,
                             const boost::system::error_code& error);
         
     public:
 
         GrSim_Vision(io_service& io_srvs, udp::endpoint& grsim_endpoint);
         ~GrSim_Vision();
+
+
+        inline void add_on_packet_received_callback(boost::function<void(void)> callback_function) {
+            this->on_packet_received_callbacks.push_back(callback_function); // boost::function is also like a smart pointer
+        }
+
 
         void receive_packet();
         void async_receive_packet();
@@ -61,7 +67,7 @@ class Sensor_System { // corresponding to one particular robot, though multiple 
         thread_ptr v_thread;
         boost::mutex mu;
         boost::condition_variable_any cond_init_finished;
-        unsigned int sample_period_ms = 100; // millisec
+        unsigned int sample_period_ms = 10; // millisec
         double zero_thresh = 0.001;
         unsigned int cnt_thresh = 5; 
         timer_ptr timer;
@@ -78,6 +84,12 @@ class Sensor_System { // corresponding to one particular robot, though multiple 
     
         void vision_thread(udp::endpoint& v_ep);
         void timer_expire_callback();
+        void on_packet_received();
+
+        arma::vec prev_loc = {0.00, 0.00};
+        float prev_orien = 0.00;
+        void on_location_changed();
+        void on_orientation_changed();
 
     public:
         

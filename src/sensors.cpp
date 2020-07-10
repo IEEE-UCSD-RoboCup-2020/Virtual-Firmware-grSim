@@ -85,12 +85,12 @@ void GrSim_Vision::receive_packet() {
 void GrSim_Vision::async_receive_packet() {
     
     socket->async_receive_from(asio::buffer(*receive_buffer), *ep,
-        boost::bind(&GrSim_Vision::on_receive_packet, this,
+        boost::bind(&GrSim_Vision::async_receive_handler, this,
         asio::placeholders::bytes_transferred, asio::placeholders::error)
     );
 }
 
-void GrSim_Vision::on_receive_packet(std::size_t num_bytes_received,
+void GrSim_Vision::async_receive_handler(std::size_t num_bytes_received,
                                      const boost::system::error_code& error) 
 {    
     if(error) {
@@ -110,6 +110,13 @@ void GrSim_Vision::on_receive_packet(std::size_t num_bytes_received,
     publish_robots_vinfo(packet.detection().robots_yellow(), YELLOW);
 
     // To-do add publish ball vinfo
+
+    // std::cout << millis() << std::endl;
+
+    // execute the callback functions passed by other classes
+    for(auto& callback_function : this->on_packet_received_callbacks) {
+        callback_function();
+    }
 
     // start the next receive cycle
     this->async_receive_packet();
@@ -183,6 +190,7 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
     io_service ios;
     this->timer = timer_ptr(new deadline_timer(ios));
     this->vision = GrSim_Vision_ptr(new GrSim_Vision(ios, v_ep));
+    this->vision->add_on_packet_received_callback(boost::bind(&Sensor_System::on_packet_received, this));
     cond_init_finished.notify_all();
     /* sync way
     while(1) {
@@ -198,6 +206,7 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
     
     ios.run();
 }
+
 
 
 
@@ -312,6 +321,7 @@ void Sensor_System::timer_expire_callback() {
     }
     
     double angle_diff = curr_theta - prev_theta;
+    // std::cout << angle_diff << std::endl; // debug
     if(angle_diff >= -zero_thresh && angle_diff <= zero_thresh && cnt2 < cnt_thresh) {
        cnt2++;
     }
@@ -327,4 +337,30 @@ void Sensor_System::timer_expire_callback() {
     // start the next timer cycle
     this->timer->expires_from_now(milliseconds(sample_period_ms));
     this->timer->async_wait(boost::bind(&Sensor_System::timer_expire_callback, this));
+}
+
+
+/* note: this callback is running on the thread this->vision object runs, 
+   don't forget synchronization */
+void Sensor_System::on_packet_received() {
+    vec loc = this->vision->get_robot_location(color, id);
+    float orien = this->vision->get_robot_orientation(color, id);
+    if(!arma::approx_equal(loc, prev_loc, "absdiff", zero_thresh)) {
+        this->on_location_changed();
+        prev_loc = loc;
+    }
+    if(fabs(orien - prev_orien) > zero_thresh) {
+        this->on_orientation_changed();
+        prev_orien = orien;
+    }
+
+}
+
+
+void Sensor_System::on_location_changed() {
+    // std::cout << this->get_translational_displacement() << std::endl;
+}
+
+void Sensor_System::on_orientation_changed() {
+    // std::cout << this->get_rotational_displacement() << std::endl;
 }

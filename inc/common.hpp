@@ -3,10 +3,12 @@
 
 #include <iostream>
 #include <armadillo>
+#include <math.h>
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/array.hpp>
+#include <boost/signals2.hpp>
 
 #include "grSim_Packet.pb.h"
 #include "grSim_Commands.pb.h"

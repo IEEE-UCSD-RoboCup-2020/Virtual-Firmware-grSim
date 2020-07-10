@@ -33,6 +33,7 @@ PROTO_LIB = -L/usr/local/lib -lprotobuf
 ### concatenate all flags
 FLAGS =  $(CPP_STANDARD) $(CPP_INC) $(PROTO_INC) $(BOOST_LIB)
 FLAGS += $(PROTO_LIB) $(SCI_MATH_LIB)
+FLAGS += -g 
 
 
 
