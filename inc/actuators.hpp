@@ -76,19 +76,31 @@ public:
      * the smaller the gap between the target and current speed, the smaller the acceleration)
      * unit: rad/s
      */
-    inline void set_wheels_speeds(float upper_left, float lower_left, 
+    void set_wheels_speeds(float upper_left, float lower_left, 
                                   float lower_right, float upper_right) {
+        mu.lock();
         wheel_upper_left_vel = upper_left;
         wheel_lower_left_vel = lower_left;
         wheel_lower_right_vel = lower_right;
         wheel_upper_right_vel = upper_right;
+        mu.unlock();
     }
 
-    inline void turn_on_dribbler() { dribbler_on = true; }
-    inline void turn_off_dribbler() { dribbler_on = false; }
-    inline void kick(float speed_x, float speed_y) { 
+    void turn_on_dribbler() { 
+        mu.lock();
+        dribbler_on = true;
+        mu.unlock(); 
+    }
+    void turn_off_dribbler() { 
+        mu.lock();
+        dribbler_on = false;
+        mu.unlock(); 
+    }
+    void kick(float speed_x, float speed_y) { 
+        mu.lock();
         kick_speed_x = speed_x; 
         kick_speed_y = speed_y; 
+        mu.unlock();
     }
     
     void stop();

@@ -10,169 +10,6 @@ using namespace boost::posix_time;
 using byte = unsigned char;
 
 
-
-vec GrSim_Vision::blue_loc_vecs[NUM_ROBOTS];
-vec GrSim_Vision::yellow_loc_vecs[NUM_ROBOTS];
-
-void GrSim_Vision::publish_robots_vinfo(
-    const google::protobuf::RepeatedPtrField<SSL_DetectionRobot>& robots,
-    team_color_t team_color) 
-{
-    /*
-     * x, y reversed due to global vision system views from the right hand side-wall view
-     * which needs to be transformed to the viewing vector starting from goal of our side to
-     * goal of opponent side 
-     */
-    for(auto& bot : robots) {
-        mu.lock();
-        if(team_color == BLUE) {
-            blue_loc_vecs[bot.robot_id()] = {-bot.y(), bot.x(), bot.orientation()};
-            // print_robot_vinfo(bot); // for debugging
-        }
-        if(team_color == YELLOW) {
-            yellow_loc_vecs[bot.robot_id()] = {-bot.y(), bot.x(), bot.orientation()};
-            // print_robot_vinfo(bot); // for debugging
-        }
-        mu.unlock();
-    }
-}
-    
-
-GrSim_Vision::GrSim_Vision(io_service& io_srvs, udp::endpoint& grsim_endpoint) {
-    this->ios = &io_srvs;
-    this->ep = &grsim_endpoint;
-    this->receive_buffer = buffer_array_ptr(new boost::array<char, BUF_SIZE>());
-    this->socket = socket_ptr(new udp::socket(io_srvs));
-
-    socket->open(grsim_endpoint.protocol());
-    socket->set_option(udp::socket::reuse_address(true));
-    socket->bind(grsim_endpoint);
-    socket->set_option(ip::multicast::join_group(grsim_endpoint.address()));
-    mu.lock();
-    for(auto& vec : blue_loc_vecs) {
-        vec = arma::vec("0 0 0");
-    }
-    for(auto& vec : yellow_loc_vecs) {
-        vec = arma::vec("0 0 0");
-    }
-    mu.unlock();
-}
-GrSim_Vision::~GrSim_Vision() {}
-
-void GrSim_Vision::receive_packet() {
-    size_t num_bytes_received;
-    std::string packet_string;
-    SSL_WrapperPacket packet;
-    google::protobuf::RepeatedPtrField<SSL_DetectionRobot> *blue_robots, *yellow_robots;
-    try {
-        num_bytes_received = socket->receive_from(asio::buffer(*receive_buffer), *ep);
-        packet_string = std::string(receive_buffer->begin(), 
-                                    receive_buffer->begin() + num_bytes_received);
-
-        packet.ParseFromString(packet_string);
-        
-        publish_robots_vinfo(packet.detection().robots_blue(), BLUE);
-        publish_robots_vinfo(packet.detection().robots_yellow(), YELLOW);
-
-    }
-    catch (std::exception& e) {
-        // To-do : Exception Handling
-        std::cout << "[Exception] " << e.what() << std::endl;
-    }
-}
-
-
-void GrSim_Vision::async_receive_packet() {
-    
-    socket->async_receive_from(asio::buffer(*receive_buffer), *ep,
-        boost::bind(&GrSim_Vision::async_receive_handler, this,
-        asio::placeholders::bytes_transferred, asio::placeholders::error)
-    );
-}
-
-void GrSim_Vision::async_receive_handler(std::size_t num_bytes_received,
-                                     const boost::system::error_code& error) 
-{    
-    if(error) {
-        std::cerr << "[Error Code] " << error.message() << std::endl;
-    }
-
-    std::string packet_string;
-    SSL_WrapperPacket packet;
-    google::protobuf::RepeatedPtrField<SSL_DetectionRobot> *blue_robots, *yellow_robots;
-
-    packet_string = std::string(receive_buffer->begin(), 
-                                    receive_buffer->begin() + num_bytes_received);
-
-    packet.ParseFromString(packet_string);
-    
-    publish_robots_vinfo(packet.detection().robots_blue(), BLUE);
-    publish_robots_vinfo(packet.detection().robots_yellow(), YELLOW);
-
-    // To-do add publish ball vinfo
-
-    // std::cout << millis() << std::endl;
-
-    // execute the callback functions passed by other classes
-    for(auto& callback_function : this->on_packet_received_callbacks) {
-        callback_function();
-    }
-
-    // start the next receive cycle
-    this->async_receive_packet();
-}
-
-
-
-
-
-vec GrSim_Vision::get_robot_location(team_color_t color, int robot_id) {
-    mu.lock();
-    vec location;
-    if(color == BLUE) {
-        location = {GrSim_Vision::blue_loc_vecs[robot_id](0), 
-                        GrSim_Vision::blue_loc_vecs[robot_id](1)};
-    }
-    else {
-        location = {GrSim_Vision::yellow_loc_vecs[robot_id](0), 
-                        GrSim_Vision::yellow_loc_vecs[robot_id](1)};
-    }
-    mu.unlock();
-    return location;
-}
-
-float GrSim_Vision::get_robot_orientation(team_color_t color, int robot_id) {
-    mu.lock();
-    float ret = color == BLUE ? to_degree( GrSim_Vision::blue_loc_vecs[robot_id](2) ) 
-                         : to_degree( GrSim_Vision::yellow_loc_vecs[robot_id](2) );
-    mu.unlock();
-    return ret;
-}
-
-
-
-
-
-/*
-// for debugging only
-void GrSim_Vision::print_robot_vinfo(const SSL_DetectionRobot& robot) {
-    std::cout << "ID[" << robot.robot_id() << "] "
-                << "[<x,y>:(" << robot.x() << ", " << robot.y() << ")]"
-                << "orien[" << robot.orientation() << "] "
-                << "confidence[" << robot.confidence() << "]"
-                << std::endl;
-} 
-*/
-
-
-// ==================================================================================================== //
-
-// Gorgeous divide line between two different classes :)
-
-// ==================================================================================================== //
-
-
-
 Sensor_System::Sensor_System(team_color_t color, int robot_id, udp::endpoint& grsim_vision_ep) {
     this->color = color;
     this->id = robot_id;
@@ -188,7 +25,7 @@ Sensor_System::Sensor_System(team_color_t color, int robot_id, udp::endpoint& gr
 
 void Sensor_System::vision_thread(udp::endpoint& v_ep) {
     io_service ios;
-    this->timer = timer_ptr(new deadline_timer(ios));
+    // this->timer = timer_ptr(new deadline_timer(ios));
     this->vision = GrSim_Vision_ptr(new GrSim_Vision(ios, v_ep));
     this->vision->add_on_packet_received_callback(boost::bind(&Sensor_System::on_packet_received, this));
     cond_init_finished.notify_all();
@@ -201,8 +38,8 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
 
     // async way
     this->vision->async_receive_packet();
-    this->timer->expires_from_now(milliseconds(sample_period_ms));
-    this->timer->async_wait(boost::bind(&Sensor_System::timer_expire_callback, this));
+    //this->timer->expires_from_now(milliseconds(sample_period_ms));
+    //this->timer->async_wait(boost::bind(&Sensor_System::timer_expire_callback, this));
     
     ios.run();
 }
@@ -214,9 +51,10 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
 
 void Sensor_System::init() {
     set_init_displacement();
+    /*
     vec prev_vec_d = {0, 0};
     prev_theta = 0.000;
-    is_first_time = true;
+    is_first_time = true; */
 }
 
 
@@ -255,34 +93,32 @@ float Sensor_System::get_rotational_displacement() {
    unit: mm/s */
 arma::vec Sensor_System::get_translational_velocity() {
     /* measurement taken in a concurrently running thread */
-    mu.lock();
-    auto ret = this->vec_v * 1000.00; // convert from m/s to mm/s
-    mu.unlock();
-    return ret;
+    reader_lock(rwmu);
+    return this->vec_v * 1000.00; // convert from m/s to mm/s
 }
 
 /* get the rotational speed, simulating EKF[Gyro within IMU + Encoder estimation]
    unit: degree/s */
 float Sensor_System::get_rotational_velocity() {
-    mu.lock();
-    auto ret = this->omega * 1000.00;
-    mu.unlock();
-    return ret;
+    reader_lock(rwmu);
+    return this->omega * 1000.00;
 }
 
 
+/*
 // config the sample rate of the velocity trackers
 inline void Sensor_System::set_velocity_sample_rate(unsigned int rate_Hz) {
     sample_period_ms = (1.00 / (double)rate_Hz) * 1000.000;
 }
+*/
 
-
+/*
 // callback that calculates velocities
 void Sensor_System::timer_expire_callback() {
 
     // Optional To-do: add a low pass filter (queue to get data list, pop oldest and push latest to keep the buffer size small)
 
-    /* calc velocities */
+    // calc velocities //
 
     arma::vec curr_vec_d = this->get_translational_displacement();
     float curr_theta = this->get_rotational_displacement();
@@ -338,29 +174,53 @@ void Sensor_System::timer_expire_callback() {
     this->timer->expires_from_now(milliseconds(sample_period_ms));
     this->timer->async_wait(boost::bind(&Sensor_System::timer_expire_callback, this));
 }
-
+*/
 
 /* note: this callback is running on the thread this->vision object runs, 
    don't forget synchronization */
 void Sensor_System::on_packet_received() {
-    vec loc = this->vision->get_robot_location(color, id);
-    float orien = this->vision->get_robot_orientation(color, id);
-    if(!arma::approx_equal(loc, prev_loc, "absdiff", zero_thresh)) {
-        this->on_location_changed();
-        prev_loc = loc;
+    vec curr_disp = this->get_translational_displacement();
+    float curr_orien = this->get_rotational_displacement();
+    double curr_t_stamp = this->vision->get_timestamp_ms();
+
+    vec disp_diff = curr_disp - prev_disp;
+    float orien_diff = curr_orien - prev_orien;
+    
+    if(norm(disp_diff) >  translational_resolution) {
+        this->on_location_changed(disp_diff / (curr_t_stamp - disp_t_stamp) );
+        prev_disp = curr_disp;
+        disp_t_stamp = this->vision->get_timestamp_ms();
     }
-    if(fabs(orien - prev_orien) > zero_thresh) {
-        this->on_orientation_changed();
-        prev_orien = orien;
-    }
+
+    /*
+    if(fabs(orien_diff) > rotational_resolution / (float)counter_threshold) {
+        this->on_orientation_changed(curr_orien);
+        prev_orien = curr_orien;
+    }*/
 
 }
 
 
-void Sensor_System::on_location_changed() {
-    // std::cout << this->get_translational_displacement() << std::endl;
+void Sensor_System::on_location_changed(arma::vec disp_vel) {
+    /*
+    if(trans_counter == 0) {
+        disp_stamp.first = curr_disp;
+        disp_stamp.second = this->vision->get_timestamp_ms();
+        trans_counter++;
+    }
+    else if(trans_counter < counter_threshold) {
+        trans_counter++;
+    }
+    else {
+        trans_counter = 0;
+        vec trans_vel = (curr_disp - disp_stamp.first) / float(this->vision->get_timestamp_ms() - disp_stamp.second);
+        std::cout << trans_vel << std::endl;
+    }*/
+    // std::cout << disp_vel << std::endl;
+    this->vec_v = disp_vel;
 }
 
-void Sensor_System::on_orientation_changed() {
-    // std::cout << this->get_rotational_displacement() << std::endl;
+
+void Sensor_System::on_orientation_changed(float curr_orien) {
+
 }

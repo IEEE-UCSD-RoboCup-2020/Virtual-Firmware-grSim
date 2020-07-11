@@ -48,4 +48,18 @@ double map(double value, range_t from, range_t to);
 arma::vec map(arma::vec value, range_t from, range_t to);
 void map2(arma::vec& value, range_t from, range_t to);
 
+
+/* Synchronization for Reader/Writer problems */
+typedef boost::shared_mutex reader_writer_mutex; 
+
+// get exclusive access
+#define writer_lock(mutex) do { \
+    boost::upgrade_lock<reader_writer_mutex> __writer_lock(mutex); \
+    boost::upgrade_to_unique_lock<reader_writer_mutex> __unique_writer_lock( __writer_lock ); \
+}while(0)
+
+// get shared access
+#define reader_lock(mutex) boost::shared_lock<reader_writer_mutex>  __reader_lock(mutex); 
+
+
 #endif

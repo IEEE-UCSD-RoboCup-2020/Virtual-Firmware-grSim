@@ -39,9 +39,9 @@ void GrSim_Console::send_command(bool is_team_yellow, int id,
     command->set_wheel2(lower_left_wheel_speed); // lower_left
     command->set_wheel3(lower_right_wheel_speed); // lower_right
     command->set_wheel4(upper_right_wheel_speed); // upper_right
-    // command->set_veltangent(x);
-    // command->set_velnormal(y);
-    // command->set_velangular(omega);
+    command->set_veltangent(0.00);
+    command->set_velnormal(0.00);
+    command->set_velangular(0.00);
 
     command->set_kickspeedx(kick_speed_x);
     command->set_kickspeedz(kick_speed_y);
@@ -117,6 +117,7 @@ void Actuator_System::set_ctrl_period(float period_ms) {
 
 
 void Actuator_System::stop() {
+    mu.lock();
     wheel_upper_left_vel = 0.00;
     wheel_lower_left_vel = 0.00; 
     wheel_lower_right_vel = 0.00; 
@@ -124,6 +125,7 @@ void Actuator_System::stop() {
     kick_speed_x = 0.00;
     kick_speed_y = 0.00;
     dribbler_on = false;
+    mu.unlock();
 }
 
 
