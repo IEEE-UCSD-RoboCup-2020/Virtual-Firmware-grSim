@@ -54,6 +54,7 @@ BOOST_LOG_ATTRIBUTE_KEYWORD(timeline, "Timeline", boost::log::attributes::timer:
 
 std::ostream& operator<< (std::ostream& strm, severity_level level);
 
+
 class B_Log {
 private:
     typedef boost::shared_ptr<boost::log::sources::severity_logger<severity_level>> slog_ptr;
@@ -87,6 +88,5 @@ public:
 
 B_Log& operator<<(B_Log& logger, std::string& str);
 B_Log& operator<<(B_Log& logger, const char* str);
-
 
 #endif

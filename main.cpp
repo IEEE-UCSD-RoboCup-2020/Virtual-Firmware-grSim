@@ -33,7 +33,8 @@ int main(int argc, char **argv) {
     sensors.init();
 
     B_Log::sink->set_filter(severity >= Info);
-    B_Log::set_even_shorter_format();
+    
+    
 
     double m1, m2, m3, m4;
     vec d = {0, 0}, v = {0, 0}, prev_d = {0, 0}, prev_v = {0, 0};
@@ -41,8 +42,9 @@ int main(int argc, char **argv) {
     while(1) {
         std::cin >> m1 >> m2 >> m3 >> m4;
 
-        B_Log::sink->set_filter(severity >= Trace);
-
+        B_Log::set_even_shorter_format();
+        B_Log::sink->set_filter(tag_attr == "vision data");
+        
         sensors.set_init_displacement();
         int t0 = millis();
         while(millis() - t0 < 1000) {

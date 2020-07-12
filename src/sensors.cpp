@@ -18,15 +18,13 @@ Sensor_System::Sensor_System(team_color_t color, int robot_id, udp::endpoint& gr
         new boost::thread(boost::bind(&Sensor_System::vision_thread, this, grsim_vision_ep))
     );
 
-
-    B_Log::sink->set_filter(severity >= Info);
-
     mu.lock();
     cond_init_finished.wait(mu);
     mu.unlock();
 
 
     logger << "\033[0;32m sensor system initialized \033[0m";
+    logger.add_tag("vision data");
 }
 
 void Sensor_System::vision_thread(udp::endpoint& v_ep) {
@@ -35,7 +33,7 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
     this->vision = GrSim_Vision_ptr(new GrSim_Vision(ios, v_ep));
     this->vision->add_on_packet_received_callback(boost::bind(&Sensor_System::on_packet_received, this));
 
-    
+    logger << "start receiving udp multicast packets from grSim";
     cond_init_finished.notify_all();
     /* sync way
     while(1) {
@@ -44,8 +42,8 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
         // ....
     } */
 
-    logger.add_tag("vision data");
-    logger << "start receiving udp multicast packets from grSim";
+    
+    
     // async way
     this->vision->async_receive_packet();
     //this->timer->expires_from_now(milliseconds(sample_period_ms));

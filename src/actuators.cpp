@@ -8,65 +8,6 @@ using namespace boost::asio;
 using namespace boost::posix_time;
 
 
-GrSim_Console::GrSim_Console(io_service& io_srvs, udp::endpoint& endpoint) {
-    this->ios = &io_srvs;
-    this->ep = &endpoint;
-    this->socket = socket_ptr(new udp::socket(io_srvs));
-    this->socket->open(udp::v4());
-}
-
-GrSim_Console::~GrSim_Console() {}
-
-void GrSim_Console::send_command(bool is_team_yellow, int id, 
-                    float upper_left_wheel_speed, float lower_left_wheel_speed,
-                    float lower_right_wheel_speed, float upper_right_wheel_speed, 
-                   // float x, float y, float omega, 
-                    float kick_speed_x, float kick_speed_y, bool spinner) 
-{
-    mu.lock();
-
-    grSim_Packet packet;
-    
-    packet.mutable_commands()->set_isteamyellow(is_team_yellow);
-    packet.mutable_commands()->set_timestamp(millis());
-
-
-    grSim_Robot_Command* command = packet.mutable_commands()->add_robot_commands();
-    command->set_id(id);
-    command->set_wheelsspeed(true);
-
-    command->set_wheel1(upper_left_wheel_speed); // upper_left
-    command->set_wheel2(lower_left_wheel_speed); // lower_left
-    command->set_wheel3(lower_right_wheel_speed); // lower_right
-    command->set_wheel4(upper_right_wheel_speed); // upper_right
-    command->set_veltangent(0.00);
-    command->set_velnormal(0.00);
-    command->set_velangular(0.00);
-
-    command->set_kickspeedx(kick_speed_x);
-    command->set_kickspeedz(kick_speed_y);
-    command->set_spinner(spinner);
-
-
-    char to_send[BUF_SIZE];
-    packet.SerializeToArray(to_send, packet.ByteSizeLong());
-
-    try {
-        socket->send_to(asio::buffer(to_send), *ep);
-    }
-    catch (std::exception& e) {
-        // To-do : Exception Handling & sync
-        std::cout << "[Exception] " << e.what() << std::endl;
-    }
-
-    mu.unlock();
-}
-
-// ==================================================================================================== //
-
-// Gorgeous divide line between two different classes :)
-
-// ==================================================================================================== //
 
 
 Actuator_System::Actuator_System(team_color_t color, int robot_id, udp::endpoint& grsim_console_ep) {
@@ -79,27 +20,74 @@ Actuator_System::Actuator_System(team_color_t color, int robot_id, udp::endpoint
     mu.lock();
     cond_init_finished.wait(mu);
     mu.unlock();
-
+    logger << "\033[0;32m actuator system initialized \033[0m";
+    logger.add_tag("motion cmd");
 }
 
 void Actuator_System::send_cmd_thread(udp::endpoint& c_ep) {
     io_service ios;
     this->timer = timer_ptr(new deadline_timer(ios));
     this->console = GrSim_Console_ptr(new GrSim_Console(ios, c_ep));
+    
+    logger << "start sending motion cmd to grSim";
+    
     cond_init_finished.notify_all();
 
+    
     // timer-driven background cmd-sending async task
     this->timer->expires_from_now(milliseconds(ctrl_period_ms));
     this->timer->async_wait(boost::bind(&Actuator_System::timer_expire_callback, this));
     
+    
+
     ios.run();
 }
 
+
+
+/*
+    * Set motor "target speed" (not immediate speed, acceleration is needed), 
+    * which is essentially motor output pwr (or acceleration that's not constant, 
+    * the smaller the gap between the target and current speed, the smaller the acceleration)
+    * unit: rad/s
+    */
+void Actuator_System::set_wheels_speeds(float upper_left, float lower_left, 
+                                float lower_right, float upper_right) {
+    writer_lock(rwmu);
+    wheel_upper_left_vel = upper_left;
+    wheel_lower_left_vel = lower_left;
+    wheel_lower_right_vel = lower_right;
+    wheel_upper_right_vel = upper_right;
+}
+
+void Actuator_System::turn_on_dribbler() { 
+    writer_lock(rwmu);
+    dribbler_on = true;
+}
+void Actuator_System::turn_off_dribbler() { 
+    writer_lock(rwmu);
+    dribbler_on = false;
+}
+void Actuator_System::kick(float speed_x, float speed_y) { 
+    writer_lock(rwmu);
+    kick_speed_x = speed_x; 
+    kick_speed_y = speed_y; 
+}
+
+
+
 void Actuator_System::timer_expire_callback() {
-  
+    reader_lock(rwmu);
     this->console->send_command(this->color == YELLOW ? true : false, this->id, 
             wheel_upper_left_vel, wheel_lower_left_vel, wheel_lower_right_vel, wheel_upper_right_vel,
-            kick_speed_x, kick_speed_y, dribbler_on);
+            kick_speed_x, kick_speed_y, dribbler_on);   
+
+    logger.log(Trace, "motion packet <" 
+                + repr(wheel_upper_left_vel) + ", " 
+                + repr(wheel_lower_left_vel) + ", "
+                + repr(wheel_lower_right_vel) + ", "
+                + repr(wheel_upper_right_vel) + ", "
+                + "> sent!");
 
     this->timer->expires_from_now(milliseconds(ctrl_period_ms));
     this->timer->async_wait(boost::bind(&Actuator_System::timer_expire_callback, this));
@@ -117,7 +105,7 @@ void Actuator_System::set_ctrl_period(float period_ms) {
 
 
 void Actuator_System::stop() {
-    mu.lock();
+    writer_lock(rwmu);
     wheel_upper_left_vel = 0.00;
     wheel_lower_left_vel = 0.00; 
     wheel_lower_right_vel = 0.00; 
@@ -125,7 +113,6 @@ void Actuator_System::stop() {
     kick_speed_x = 0.00;
     kick_speed_y = 0.00;
     dribbler_on = false;
-    mu.unlock();
 }
 
 

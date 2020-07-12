@@ -33,6 +33,10 @@ void B_Log::static_init() {
 }
 
 
+
+
+
+
 // default constructor: logging to std::clog with default format
 B_Log::B_Log() {
 
@@ -45,11 +49,6 @@ B_Log::B_Log() {
     
 }
     
-
-
-void B_Log::add_tag(std::string tag) {
-    slog->add_attribute(LOG_TAG(tag));
-}
 
 void B_Log::set_shorter_format() {
     sink->set_formatter
@@ -85,10 +84,6 @@ void B_Log::set_even_shorter_format() {
     );
 }
 
-
-
-
-
 void B_Log::set_default_format() {
         // set default format
     sink->set_formatter
@@ -112,6 +107,10 @@ void B_Log::set_default_format() {
             << expr::smessage
             
     );
+}
+
+void B_Log::add_tag(std::string tag) {
+    slog->add_attribute(LOG_TAG(tag));
 }
 
 B_Log& B_Log::operator()(severity_level sev) {

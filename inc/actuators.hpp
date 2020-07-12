@@ -2,35 +2,8 @@
 #define __ACTUATORS_H
 
 #include "common.hpp"
-#include "sensors.hpp"
+#include "grsim_console.hpp"
 
-
-class GrSim_Console{
-private:
-    typedef boost::asio::ip::udp udp;
-    typedef boost::asio::io_service io_service;
-    typedef boost::shared_ptr<udp::socket> socket_ptr; // smart pointer(no need to mannually deallocate
-    static const unsigned int BUF_SIZE = 256;
-
-    io_service *ios;
-    udp::endpoint *ep;
-    socket_ptr socket;
-    boost::mutex mu;
-
-public:
-    GrSim_Console(io_service& io_srvs, udp::endpoint& endpoint);
-
-    ~GrSim_Console();
-
-    void send_command(bool is_team_yellow, int id, 
-                      float upper_left_wheel_speed, 
-                      float lower_left_wheel_speed,
-                      float lower_right_wheel_speed, 
-                      float upper_right_wheel_speed,
-                      // float x, float y, float omega, 
-                      float kick_speed_x, float kick_speed_y, 
-                      bool spinner);
-};
 
 
 class Actuator_System {
@@ -46,13 +19,16 @@ private:
     GrSim_Console_ptr console;
     thread_ptr v_thread;
     boost::mutex mu;
+    reader_writer_mutex rwmu;
     boost::condition_variable_any cond_init_finished;
     unsigned int ctrl_period_ms = 10; // milliseconds  
     timer_ptr timer;
+    B_Log logger;
 
     void send_cmd_thread(udp::endpoint& c_ep);
     void timer_expire_callback();
-    
+
+
     // To-do:
     float max_possible_speed(arma::vec direction);
     
@@ -77,31 +53,10 @@ public:
      * unit: rad/s
      */
     void set_wheels_speeds(float upper_left, float lower_left, 
-                                  float lower_right, float upper_right) {
-        mu.lock();
-        wheel_upper_left_vel = upper_left;
-        wheel_lower_left_vel = lower_left;
-        wheel_lower_right_vel = lower_right;
-        wheel_upper_right_vel = upper_right;
-        mu.unlock();
-    }
-
-    void turn_on_dribbler() { 
-        mu.lock();
-        dribbler_on = true;
-        mu.unlock(); 
-    }
-    void turn_off_dribbler() { 
-        mu.lock();
-        dribbler_on = false;
-        mu.unlock(); 
-    }
-    void kick(float speed_x, float speed_y) { 
-        mu.lock();
-        kick_speed_x = speed_x; 
-        kick_speed_y = speed_y; 
-        mu.unlock();
-    }
+                                  float lower_right, float upper_right);
+    void turn_on_dribbler();
+    void turn_off_dribbler();
+    void kick(float speed_x, float speed_y);
     
     void stop();
 
