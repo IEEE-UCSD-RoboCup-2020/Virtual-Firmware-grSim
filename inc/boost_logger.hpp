@@ -17,6 +17,20 @@
 #include <boost/log/sinks/text_ostream_backend.hpp>
 #include <ostream>
 
+
+
+
+
+#include <boost/date_time/posix_time/posix_time.hpp>
+
+#include <boost/log/attributes/scoped_attribute.hpp>
+
+#include <iostream>
+#include <boost/chrono.hpp>
+#include <boost/chrono/system_clocks.hpp>
+#include <boost/thread.hpp> 
+
+
 enum severity_level
 {
     Trace,
@@ -26,7 +40,17 @@ enum severity_level
     Error,
     Fatal
 };
+
+
+#define LOG_TAG(str) "Tag", boost::log::attributes::constant< std::string >(str)
 BOOST_LOG_ATTRIBUTE_KEYWORD(severity, "Severity", severity_level);
+BOOST_LOG_ATTRIBUTE_KEYWORD(line_id, "LineID", unsigned int)
+BOOST_LOG_ATTRIBUTE_KEYWORD(tag_attr, "Tag", std::string);
+BOOST_LOG_ATTRIBUTE_KEYWORD(timeline, "Timeline", boost::log::attributes::timer::value_type)
+
+
+
+
 
 std::ostream& operator<< (std::ostream& strm, severity_level level);
 
@@ -36,17 +60,25 @@ private:
     typedef boost::log::sinks::asynchronous_sink< boost::log::sinks::text_ostream_backend > text_sink;
     
 
-    
 public:
     severity_level sev = Info;
     slog_ptr slog;
-    boost::shared_ptr< text_sink > sink = boost::make_shared< text_sink >();
+    static boost::shared_ptr< text_sink > sink; 
+    static bool statically_init;
+
+    // should be called before the construction
+    static void static_init(); 
 
     // default constructor: logging to std::clog
     B_Log();
 
-    void add_tag(std::string& tag);
-    void set_neat_format();
+    void add_tag(std::string tag);
+    
+    static void set_shorter_format();
+    static void set_even_shorter_format();
+    static void set_shortest_format();
+    static void set_default_format();
+
     B_Log& operator()(severity_level sev);
 
     void log(severity_level sev, std::string str);
@@ -55,9 +87,6 @@ public:
 
 B_Log& operator<<(B_Log& logger, std::string& str);
 B_Log& operator<<(B_Log& logger, const char* str);
-
-
-
 
 
 #endif

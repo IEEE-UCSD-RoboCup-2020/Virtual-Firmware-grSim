@@ -72,10 +72,6 @@ class Sensor_System { // corresponding to one particular robot, though multiple 
 
         void init();
 
-        // void disable_all_log();
-        void enable_trace_log();
-        void disable_trace_log();
-
         /*** All methods below returns coordinate relative to robot's own body frame ***/
 
         void set_init_displacement();

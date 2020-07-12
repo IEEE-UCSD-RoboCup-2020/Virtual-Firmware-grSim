@@ -19,7 +19,7 @@ Sensor_System::Sensor_System(team_color_t color, int robot_id, udp::endpoint& gr
     );
 
 
-    logger.sink->set_filter(severity >= Info);
+    B_Log::sink->set_filter(severity >= Info);
 
     mu.lock();
     cond_init_finished.wait(mu);
@@ -44,6 +44,7 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
         // ....
     } */
 
+    logger.add_tag("vision data");
     logger << "start receiving udp multicast packets from grSim";
     // async way
     this->vision->async_receive_packet();
@@ -53,14 +54,6 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
     ios.run();
 }
 
-
-
-void Sensor_System::enable_trace_log() {
-    logger.sink->set_filter(severity >= Trace);
-}
-void Sensor_System::disable_trace_log() {
-    logger.sink->set_filter(severity >= Info);
-}
 
 void Sensor_System::init() {
     set_init_displacement();

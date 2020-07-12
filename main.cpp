@@ -20,9 +20,7 @@ std::ostream& operator<<(std::ostream& os, const arma::vec& v);
 
 int main(int argc, char **argv) {
 
-    // set logger filter
-    // log::core::get()->set_filter(log::trivial::severity >= log::trivial::debug);
-
+    B_Log::static_init();
 
     udp::endpoint grsim_ssl_vision_ep(ip::address::from_string("224.5.23.2"), 10020);
     udp::endpoint grsim_console_ep(ip::address::from_string(LOCAL_HOST), 20011);
@@ -33,16 +31,17 @@ int main(int argc, char **argv) {
 
     delay(500); 
     sensors.init();
-    sensors.disable_trace_log();
+
+    B_Log::sink->set_filter(severity >= Info);
+    B_Log::set_even_shorter_format();
 
     double m1, m2, m3, m4;
     vec d = {0, 0}, v = {0, 0}, prev_d = {0, 0}, prev_v = {0, 0};
     double theta, omega, prev_theta = 0.00, prev_omega = 0.00;
     while(1) {
         std::cin >> m1 >> m2 >> m3 >> m4;
-        // log::core::get()->set_filter(log::trivial::severity >= log::trivial::trace);
 
-        sensors.enable_trace_log();
+        B_Log::sink->set_filter(severity >= Trace);
 
         sensors.set_init_displacement();
         int t0 = millis();
@@ -62,9 +61,8 @@ int main(int argc, char **argv) {
             //delay(10);
             prev_d = d; prev_v = v; prev_theta = theta; prev_omega = omega;
         }
-        // log::core::get()->set_filter(log::trivial::severity >= log::trivial::debug);
         
-        sensors.disable_trace_log();
+        B_Log::sink->set_filter(severity >= Info);
 
         t0 = millis();
         while(millis() - t0 < 100) actuators.stop();
