@@ -17,13 +17,16 @@ Sensor_System::Sensor_System(team_color_t color, int robot_id, udp::endpoint& gr
     v_thread = thread_ptr(
         new boost::thread(boost::bind(&Sensor_System::vision_thread, this, grsim_vision_ep))
     );
+
+
+    logger.sink->set_filter(severity >= Info);
+
     mu.lock();
     cond_init_finished.wait(mu);
     mu.unlock();
 
-    logger.sink->set_filter(severity >= Trace);
 
-    logger << "sensor system initialized";
+    logger << "\033[0;32m sensor system initialized \033[0m";
 }
 
 void Sensor_System::vision_thread(udp::endpoint& v_ep) {
@@ -31,6 +34,8 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
     // this->timer = timer_ptr(new deadline_timer(ios));
     this->vision = GrSim_Vision_ptr(new GrSim_Vision(ios, v_ep));
     this->vision->add_on_packet_received_callback(boost::bind(&Sensor_System::on_packet_received, this));
+
+    
     cond_init_finished.notify_all();
     /* sync way
     while(1) {
@@ -40,7 +45,6 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
     } */
 
     logger << "start receiving udp multicast packets from grSim";
-
     // async way
     this->vision->async_receive_packet();
     //this->timer->expires_from_now(milliseconds(sample_period_ms));
@@ -189,7 +193,7 @@ void Sensor_System::timer_expire_callback() {
    don't forget synchronization */
 void Sensor_System::on_packet_received() {
     
-    logger << "\033[0;31m" << "<======================packet received<=====================>" << "\033[0m"; 
+    logger(Trace) << "\033[0;31m <======================packet received<=====================> \033[0m"; 
 
     vec curr_disp = this->get_translational_displacement();
     float curr_orien = this->get_rotational_displacement();
