@@ -5,6 +5,7 @@
 #include "grsim_vision.hpp"
 
 
+
 class Sensor_System { // corresponding to one particular robot, though multiple robots shared the same vision data source
     private:
         typedef boost::asio::ip::udp udp;
@@ -20,8 +21,6 @@ class Sensor_System { // corresponding to one particular robot, though multiple 
         
         reader_writer_mutex rwmu;
         boost::mutex mu;
-
-
         boost::condition_variable_any cond_init_finished;
 
         arma::vec init_loc = {0, 0};
@@ -43,7 +42,7 @@ class Sensor_System { // corresponding to one particular robot, though multiple 
         */
 
         //----------------------------------//
-        float translational_resolution = 5.000; // unit: millimeter
+        float translational_resolution = 10.000; // unit: millimeter
         float rotational_resolution = 1.5; // unit: degree 
         unsigned int trans_counter = 0;
         unsigned int orien_counter = 0;
@@ -64,11 +63,17 @@ class Sensor_System { // corresponding to one particular robot, though multiple 
         void on_location_changed(arma::vec);
         void on_orientation_changed(float);
 
+        B_Log logger;
+
+
     public:
         
         Sensor_System(team_color_t color, int robot_id, udp::endpoint& grsim_vision_ep);
 
         void init();
+
+        void enable_trace_log();
+        void disable_trace_log();
 
         /*** All methods below returns coordinate relative to robot's own body frame ***/
 
@@ -91,6 +96,9 @@ class Sensor_System { // corresponding to one particular robot, though multiple 
         float get_rotational_velocity(); // unit: degree/millisecond == deg/ms
 
 };
+
+
+
 
 // To-do: add ball-latched sensor
 

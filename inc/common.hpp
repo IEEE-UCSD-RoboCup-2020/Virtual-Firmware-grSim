@@ -10,6 +10,7 @@
 #include <boost/array.hpp>
 #include <boost/signals2.hpp>
 
+
 #include "grSim_Packet.pb.h"
 #include "grSim_Commands.pb.h"
 #include "grSim_Replacement.pb.h"
@@ -20,6 +21,8 @@
 #include "messages_robocup_ssl_robot_status.pb.h"
 #include "messages_robocup_ssl_wrapper.pb.h"
 
+
+#include "boost_logger.hpp"
 
 using byte = unsigned char;
 const int NUM_ROBOTS = 6;
@@ -51,15 +54,15 @@ void map2(arma::vec& value, range_t from, range_t to);
 
 /* Synchronization for Reader/Writer problems */
 typedef boost::shared_mutex reader_writer_mutex; 
-
 // get exclusive access
 #define writer_lock(mutex) do { \
     boost::upgrade_lock<reader_writer_mutex> __writer_lock(mutex); \
     boost::upgrade_to_unique_lock<reader_writer_mutex> __unique_writer_lock( __writer_lock ); \
 }while(0)
-
 // get shared access
 #define reader_lock(mutex) boost::shared_lock<reader_writer_mutex>  __reader_lock(mutex); 
+
+#define repr std::to_string
 
 
 #endif

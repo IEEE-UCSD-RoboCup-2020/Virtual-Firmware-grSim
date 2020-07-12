@@ -26,7 +26,7 @@ PROTODEF_SRC = $(wildcard $(PROTO)/*.proto)
 #COMPILER = g++
 COMPILER = clang++ -Qunused-arguments
 CPP_STANDARD = -std=c++17
-BOOST_LIB = -lboost_system -lboost_thread -lpthread -lboost_chrono
+BOOST_LIB = -lboost_system -lboost_thread -lpthread -lboost_chrono -DBOOST_LOG_DYN_LINK -lboost_log 
 SCI_MATH_LIB = -larmadillo
 PROTO_LIB = -L/usr/local/lib -lprotobuf
 

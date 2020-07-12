@@ -23,10 +23,10 @@ message VF_Commands {
      */
     float rotational_output = 3;
 
-    /* Kicker(+chipper) cmd represented in vector (x, y)
+    /* Kicker(+chipper) cmd represented in vector (x, z)
      * with unit range (-100 ~ 100) x (-100 ~ 100) 
      * x corresponds to horizontal kick strength
-     * y corresponds to vertical kick strength
+     * z corresponds to vertical kick strength
      */
     Vec_2D kicker = 4;
 

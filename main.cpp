@@ -16,13 +16,13 @@ typedef boost::asio::ip::tcp tcp;
  * 416 rpm ~= 43.56 rad/s 
  */
 
-
 std::ostream& operator<<(std::ostream& os, const arma::vec& v);
-
 
 int main(int argc, char **argv) {
 
- 
+    // set logger filter
+    // log::core::get()->set_filter(log::trivial::severity >= log::trivial::debug);
+
 
     udp::endpoint grsim_ssl_vision_ep(ip::address::from_string("224.5.23.2"), 10020);
     udp::endpoint grsim_console_ep(ip::address::from_string(LOCAL_HOST), 20011);
@@ -30,15 +30,20 @@ int main(int argc, char **argv) {
     Sensor_System sensors(BLUE, 0, grsim_ssl_vision_ep);
     Actuator_System actuators(BLUE, 0, grsim_console_ep);
 
+
     delay(500); 
     sensors.init();
-
+    sensors.disable_trace_log();
 
     double m1, m2, m3, m4;
     vec d = {0, 0}, v = {0, 0}, prev_d = {0, 0}, prev_v = {0, 0};
     double theta, omega, prev_theta = 0.00, prev_omega = 0.00;
     while(1) {
         std::cin >> m1 >> m2 >> m3 >> m4;
+        // log::core::get()->set_filter(log::trivial::severity >= log::trivial::trace);
+
+        sensors.enable_trace_log();
+
         sensors.set_init_displacement();
         int t0 = millis();
         while(millis() - t0 < 1000) {
@@ -49,7 +54,7 @@ int main(int argc, char **argv) {
             omega = sensors.get_rotational_velocity();
             if(!arma::approx_equal(v, prev_v, "absdiff", 0,00001) || omega != prev_omega ) { 
                 std::cout << d << " " 
-                          // << v << " "
+                          << v << " "
                           // << theta << " " 
                           // << omega 
                           << " time: " << millis() - t0 << " ms" << std::endl;  
@@ -57,6 +62,10 @@ int main(int argc, char **argv) {
             //delay(10);
             prev_d = d; prev_v = v; prev_theta = theta; prev_omega = omega;
         }
+        // log::core::get()->set_filter(log::trivial::severity >= log::trivial::debug);
+        
+        sensors.disable_trace_log();
+
         t0 = millis();
         while(millis() - t0 < 100) actuators.stop();
     }
@@ -111,6 +120,7 @@ std::ostream& operator<<(std::ostream& os, const arma::vec& v)
     os << ">";
     return os;
 }
+
 
 /*
  * Armadillo C++ library Citation:
