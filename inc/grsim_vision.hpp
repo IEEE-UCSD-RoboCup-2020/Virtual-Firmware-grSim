@@ -25,6 +25,7 @@ class GrSim_Vision {
         udp::endpoint *local_listen_ep;
         
         reader_writer_mutex rwmu;
+        double t_prev = 0;
 
         std::vector<boost::function<void(void)>> on_packet_received_callbacks;
 

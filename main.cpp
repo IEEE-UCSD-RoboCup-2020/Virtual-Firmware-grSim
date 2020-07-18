@@ -21,6 +21,8 @@ std::ostream& operator<<(std::ostream& os, const arma::vec& v);
 int main(int argc, char **argv) {
 
     B_Log::static_init();
+    B_Log::sink->set_filter(severity >= Info);
+    
 
     udp::endpoint grsim_ssl_vision_ep(ip::address::from_string("224.5.23.2"), 10020);
     udp::endpoint grsim_console_ep(ip::address::from_string(LOCAL_HOST), 20011);
@@ -30,11 +32,10 @@ int main(int argc, char **argv) {
 
 
     delay(500); 
-    sensors.init();
 
-    B_Log::sink->set_filter(severity >= Info);
-    
-    
+    // mute all logs
+    B_Log::sink->set_filter(severity > Fatal);
+
 
     double m1, m2, m3, m4;
     vec d = {0, 0}, v = {0, 0}, prev_d = {0, 0}, prev_v = {0, 0};
@@ -42,10 +43,10 @@ int main(int argc, char **argv) {
     while(1) {
         std::cin >> m1 >> m2 >> m3 >> m4;
 
-        B_Log::set_even_shorter_format();
-        B_Log::sink->set_filter(tag_attr == "vision data");
+        B_Log::set_shortest_format();
+        // B_Log::sink->set_filter(tag_attr == "vision data" && severity == Trace);
         
-        sensors.set_init_displacement();
+        sensors.init();
         int t0 = millis();
         while(millis() - t0 < 1000) {
             actuators.set_wheels_speeds(m1, m2, m3, m4);
@@ -53,14 +54,21 @@ int main(int argc, char **argv) {
             v = sensors.get_translational_velocity();
             theta = sensors.get_rotational_displacement();
             omega = sensors.get_rotational_velocity();
-            if(!arma::approx_equal(v, prev_v, "absdiff", 0,00001) || omega != prev_omega ) { 
+            // if(!arma::approx_equal(v, prev_v, "absdiff", 0,00001) || omega != prev_omega ) { 
                 std::cout << d << " " 
                           << v << " "
-                          // << theta << " " 
-                          // << omega 
+                          << theta << " " 
+                          << omega 
                           << " time: " << millis() - t0 << " ms" << std::endl;  
-            }
-            //delay(10);
+            // }
+            /*
+            std::cout << d(0) << ", " << d(1) << ", "
+                      << v(0) << ", " << v(1) << ", "
+                      << theta << ", "
+                      << omega << ", " 
+                      << sensors.get_curr_timestamp() << std::endl;
+            */
+            delay(10);
             prev_d = d; prev_v = v; prev_theta = theta; prev_omega = omega;
         }
         

@@ -42,13 +42,12 @@ class Sensor_System { // corresponding to one particular robot, though multiple 
         */
 
         //----------------------------------//
-        float translational_resolution = 10.000; // unit: millimeter
-        float rotational_resolution = 1.5; // unit: degree 
-        unsigned int trans_counter = 0;
-        unsigned int orien_counter = 0;
-        unsigned int counter_threshold = 3;
-        //std::pair<arma::vec, double> disp_stamp; 
-        //std::pair<float, double> orien_stamp;
+
+        // unsigned int trans_counter = 0;
+        // unsigned int orien_counter = 0;
+        // unsigned int counter_threshold = 3;
+        // std::pair<arma::vec, double> disp_stamp; 
+        // std::pair<float, double> orien_stamp;
         double disp_t_stamp = 0.00, orien_t_stamp = 0.00;
         arma::vec prev_disp = {0.00, 0.00};
         float prev_orien = 0.00;
@@ -67,14 +66,19 @@ class Sensor_System { // corresponding to one particular robot, though multiple 
 
 
     public:
-        
+        float translational_resolution = 10.000; // unit: millimeter
+        float rotational_resolution = 1.5; // unit: degree 
+        double vel_reset_period = 100; // unit: milliseconds
+
+
+
         Sensor_System(team_color_t color, int robot_id, udp::endpoint& grsim_vision_ep);
 
         void init();
 
         /*** All methods below returns coordinate relative to robot's own body frame ***/
 
-        void set_init_displacement();
+        void init_displacement();
 
         // Getter for \vec{d} and \theta (physics)
         /* get net translational displacement (which is the 2D Location vector)
@@ -91,6 +95,8 @@ class Sensor_System { // corresponding to one particular robot, though multiple 
 
         /* get the rotational speed, simulating EKF[Gyro within IMU + Encoder estimation]*/
         float get_rotational_velocity(); // unit: degree/millisecond == deg/ms
+
+        double get_curr_timestamp();
 
 };
 

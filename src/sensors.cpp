@@ -54,7 +54,12 @@ void Sensor_System::vision_thread(udp::endpoint& v_ep) {
 
 
 void Sensor_System::init() {
-    set_init_displacement();
+    init_displacement();
+
+    prev_orien = get_rotational_displacement();
+    orien_t_stamp = this->vision->get_timestamp_ms();
+    prev_disp = get_translational_displacement();
+    disp_t_stamp = this->vision->get_timestamp_ms();
     /*
     vec prev_vec_d = {0, 0};
     prev_theta = 0.000;
@@ -64,7 +69,7 @@ void Sensor_System::init() {
 
 /*** All methods below returns coordinate relative to robot's own body frame ***/
 
-void Sensor_System::set_init_displacement() {
+void Sensor_System::init_displacement() {
     // set the current location as the (0,0) location vector for this robot
     init_loc = this->vision->get_robot_location(this->color, this->id);
 }
@@ -107,6 +112,132 @@ float Sensor_System::get_rotational_velocity() {
     reader_lock(rwmu);
     return this->omega * 1000.00;
 }
+
+double Sensor_System::get_curr_timestamp() {
+    return this->vision->get_timestamp_ms();
+}
+
+
+
+/* note: this callback is running on the thread this->vision object runs, 
+   don't forget synchronization */
+void Sensor_System::on_packet_received() {
+    
+    // logger(Trace) << "\033[0;31m <======================packet received<=====================> \033[0m"; 
+
+    vec curr_disp = this->get_translational_displacement();
+    float curr_orien = this->get_rotational_displacement();
+    double curr_t_stamp = this->vision->get_timestamp_ms();
+
+    logger.log(Debug, "[curr_displacement]: " + repr(curr_disp(0)) + ", " + repr(curr_disp(1)) 
+                    + " [curr_orientation]: " + repr(curr_orien)
+                    + "[curr_timestamp]: " + repr(curr_t_stamp));
+    
+    logger.log(Trace, "disp, " + repr(curr_disp(0)) + ", " + repr(curr_disp(1)) 
+                    + ", " + repr(curr_orien)
+                    + ", " + repr(curr_t_stamp));
+
+
+    vec disp_diff = curr_disp - prev_disp;
+
+    float orien_diff; 
+    // transistion from +180 to -180
+    if(curr_orien < -150.00 && prev_orien > 150.00) {
+        orien_diff = (180 + curr_orien) + (180 - prev_orien);
+    }
+    // transistion from -180 to +180
+    else if(curr_orien > 150.00 && prev_orien < -150.00) {
+        orien_diff = (curr_orien - 180) - (prev_orien + 180);
+    }
+    else {
+        orien_diff = curr_orien - prev_orien;
+    }
+
+
+    // translational timeout
+    if((curr_t_stamp - disp_t_stamp) > vel_reset_period && norm(disp_diff) <=  translational_resolution) {
+        writer_lock(rwmu);       
+        this->vec_v = {0, 0};
+        logger.log(Trace, "vel, " + repr(vec_v(0)) + ", " + repr(vec_v(1)) 
+                            + ", " + repr(vision->get_timestamp_ms()));
+        prev_disp = curr_disp;
+        disp_t_stamp = this->vision->get_timestamp_ms();
+        return;
+    }
+
+    // rotational timeout
+    if((curr_t_stamp - orien_t_stamp) > vel_reset_period && fabs(orien_diff) <= rotational_resolution) {
+        writer_lock(rwmu);       
+        this->omega = 0.0;
+        logger.log(Trace, "rvel, " + repr(omega) 
+                       + ", " + repr(vision->get_timestamp_ms()));
+        prev_orien = curr_orien;
+        orien_t_stamp = this->vision->get_timestamp_ms();
+        return;
+    }
+
+    // on location having meaningful amount of change
+    if(norm(disp_diff) >  translational_resolution) {
+        this->on_location_changed(disp_diff / (curr_t_stamp - disp_t_stamp) );
+        prev_disp = curr_disp;
+        disp_t_stamp = this->vision->get_timestamp_ms();
+    }
+
+    // on rotation having meaningful amount of change
+    if(fabs(orien_diff) > rotational_resolution) {
+        this->on_orientation_changed(orien_diff / (curr_t_stamp - orien_t_stamp));
+        prev_orien = curr_orien;
+        orien_t_stamp = this->vision->get_timestamp_ms();
+    }
+
+
+
+}
+
+
+void Sensor_System::on_location_changed(arma::vec disp_vel) {
+    /*
+    if(trans_counter == 0) {
+        disp_stamp.first = curr_disp;
+        disp_stamp.second = this->vision->get_timestamp_ms();
+        trans_counter++;
+    }
+    else if(trans_counter < counter_threshold) {
+        trans_counter++;
+    }
+    else {
+        trans_counter = 0;
+        vec trans_vel = (curr_disp - disp_stamp.first) / float(this->vision->get_timestamp_ms() - disp_stamp.second);
+        std::cout << trans_vel << std::endl;
+    }*/
+    // std::cout << disp_vel << std::endl;
+    writer_lock(rwmu);
+    this->vec_v = disp_vel;
+    // logger.log(Trace, "[\033[0;32m On location changed: displacement velocity]\033[0m, " + repr(vec_v(0)) + "," + repr(vec_v(1))); 
+    logger.log(Trace, "vel, " + repr(vec_v(0)) + ", " + repr(vec_v(1)) 
+                            + ", " + repr(vision->get_timestamp_ms()));
+
+}
+
+
+void Sensor_System::on_orientation_changed(float rot_vel) {
+    writer_lock(rwmu);
+    this->omega = rot_vel;
+    logger.log(Trace, "rvel, " + repr(omega) 
+                            + ", " + repr(vision->get_timestamp_ms()));
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 /*
@@ -179,71 +310,3 @@ void Sensor_System::timer_expire_callback() {
     this->timer->async_wait(boost::bind(&Sensor_System::timer_expire_callback, this));
 }
 */
-
-/* note: this callback is running on the thread this->vision object runs, 
-   don't forget synchronization */
-void Sensor_System::on_packet_received() {
-    
-    logger(Trace) << "\033[0;31m <======================packet received<=====================> \033[0m"; 
-
-    vec curr_disp = this->get_translational_displacement();
-    float curr_orien = this->get_rotational_displacement();
-    double curr_t_stamp = this->vision->get_timestamp_ms();
-
-    logger.log(Trace, "curr_displacement: " + repr(curr_disp(0)) + ", " + repr(curr_disp(1)));
-    logger.log(Trace, "curr_orientation : " + repr(curr_orien));
-    logger.log(Trace, "curr_timestamp : " + repr(curr_t_stamp));
-    
-
-    vec disp_diff = curr_disp - prev_disp;
-    float orien_diff = curr_orien - prev_orien;
-
-    logger.log(Trace, "curr_disp - prev_disp: " + repr(disp_diff(0)) + ", " + repr(disp_diff(1)));
-    logger.log(Trace, "curr_orien - prev_orien: " + repr(orien_diff));
-
-    if(norm(disp_diff) >  translational_resolution) {
-        this->on_location_changed(disp_diff / (curr_t_stamp - disp_t_stamp) );
-        prev_disp = curr_disp;
-        disp_t_stamp = this->vision->get_timestamp_ms();
-    }
-
-    logger.log(Trace, "previous displacement: " + repr(prev_disp(0)) + ", " + repr(prev_disp(1)));
-    logger.log(Trace, "previous orientation: " + std::to_string(prev_orien));
-
-
-    
-
-    /*
-    if(fabs(orien_diff) > rotational_resolution / (float)counter_threshold) {
-        this->on_orientation_changed(curr_orien);
-        prev_orien = curr_orien;
-    }*/
-
-}
-
-
-void Sensor_System::on_location_changed(arma::vec disp_vel) {
-    /*
-    if(trans_counter == 0) {
-        disp_stamp.first = curr_disp;
-        disp_stamp.second = this->vision->get_timestamp_ms();
-        trans_counter++;
-    }
-    else if(trans_counter < counter_threshold) {
-        trans_counter++;
-    }
-    else {
-        trans_counter = 0;
-        vec trans_vel = (curr_disp - disp_stamp.first) / float(this->vision->get_timestamp_ms() - disp_stamp.second);
-        std::cout << trans_vel << std::endl;
-    }*/
-    // std::cout << disp_vel << std::endl;
-    writer_lock(rwmu);
-    this->vec_v = disp_vel;
-    logger.log(Trace, "\033[0;32m >> On location changed: this->vec_v: " + repr(vec_v(0)) + "," + repr(vec_v(1)) + "\033[0m"); 
-}
-
-
-void Sensor_System::on_orientation_changed(float curr_orien) {
-
-}

@@ -77,14 +77,22 @@ void GrSim_Vision::receive_packet() {
 
         packet.ParseFromString(packet_string);
         
+        double t_curr = packet.detection().t_capture();
+
+
         publish_robots_vinfo(packet.detection().robots_blue(), BLUE);
         publish_robots_vinfo(packet.detection().robots_yellow(), YELLOW);
-        publish_t_capture(packet.detection().t_capture());
 
-        // execute the callback functions passed by other classes
-        for(auto& callback_function : this->on_packet_received_callbacks) {
-            callback_function();
+        if(t_curr > t_prev) {
+
+            publish_t_capture(packet.detection().t_capture());
+
+            // execute the callback functions passed by other classes
+            for(auto& callback_function : this->on_packet_received_callbacks) {
+                callback_function();
+            }
         }
+        t_prev = t_curr;
 
     }
     catch (std::exception& e) {
@@ -93,6 +101,7 @@ void GrSim_Vision::receive_packet() {
     }
 }
 
+//--------------------------------------------------------------------------------------------------//
 
 void GrSim_Vision::async_receive_packet() {
     socket->async_receive_from(asio::buffer(*receive_buffer), *ep,
@@ -117,19 +126,28 @@ void GrSim_Vision::async_receive_handler(std::size_t num_bytes_received,
 
     packet.ParseFromString(packet_string);
     
+
+    double t_curr = packet.detection().t_capture();
+
+
+
     publish_robots_vinfo(packet.detection().robots_blue(), BLUE);
     publish_robots_vinfo(packet.detection().robots_yellow(), YELLOW);
-    publish_t_capture(packet.detection().t_capture());
 
-    // To-do add publish ball vinfo
+    if(t_curr > t_prev) {
+        publish_t_capture(t_curr);
 
-    // std::cout << millis() << std::endl;
+        // To-do add publish ball vinfo
 
-    // execute the callback functions passed by other classes
-    for(auto& callback_function : this->on_packet_received_callbacks) {
-        callback_function();
+        // std::cout << millis() << std::endl;
+
+        // execute the callback functions passed by other classes
+        for(auto& callback_function : this->on_packet_received_callbacks) {
+            callback_function();
+        }
     }
 
+    t_prev = t_curr;
     // start the next receive cycle
     this->async_receive_packet();
 }
@@ -177,4 +195,5 @@ void GrSim_Vision::print_robot_vinfo(const SSL_DetectionRobot& robot) {
                 << std::endl;
 } 
 */
+
 

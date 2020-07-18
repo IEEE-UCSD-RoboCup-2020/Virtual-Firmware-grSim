@@ -16,7 +16,7 @@ void B_Log::static_init() {
 
     
     // set where to log to
-    sink->locked_backend()->add_stream(boost::shared_ptr<std::ostream>(&std::clog, boost::null_deleter()));
+    sink->locked_backend()->add_stream(boost::shared_ptr<std::ostream>(&std::cout, boost::null_deleter()));
     // set default format
     set_default_format();
 
