@@ -102,6 +102,10 @@ void Actuator_System::set_ctrl_period(float period_ms) {
 }
 
 
+void Actuator_System::set_included_angle(float angle_degree) {
+    inc_angle = angle_degree;
+}
+
 
 
 void Actuator_System::stop() {
@@ -135,7 +139,7 @@ void Actuator_System::stop() {
  */
 void Actuator_System::move(arma::vec pwr_vec_3D) {
     if(arma::norm(pwr_vec_3D) > 100.00) {
-        std::cout << "Warning: move vector exceeds magnitude 100.00" << std::endl;
+        logger(Error) << "Warning: move vector exceeds magnitude 100.00";
     }
     
 }

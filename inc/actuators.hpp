@@ -16,6 +16,7 @@ private:
 
     team_color_t color;
     int id;
+    float inc_angle = 120;
     GrSim_Console_ptr console;
     thread_ptr v_thread;
     boost::mutex mu;
@@ -45,6 +46,7 @@ public:
 
     void set_ctrl_freq(float freq_Hz);
     void set_ctrl_period(float period_ms);
+    void set_included_angle(float angle_degree);
 
     /*
      * Set motor "target speed" (not immediate speed, acceleration is needed), 
