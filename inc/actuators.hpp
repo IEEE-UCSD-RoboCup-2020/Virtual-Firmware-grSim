@@ -30,8 +30,15 @@ private:
     void timer_expire_callback();
 
 
-    // To-do:
-    float max_possible_speed(arma::vec direction);
+
+    double max_wheel_speed = 43.56;
+    double max_possible_speed(arma::vec direction);
+
+    arma::vec ux, uy;
+    arma::vec fake_mx = {1, 1};
+    arma::vec fake_my = {-1, 1};
+
+    void calc_ux_uy(void);
     
 
 public:
@@ -47,7 +54,7 @@ public:
     void set_ctrl_freq(float freq_Hz);
     void set_ctrl_period(float period_ms);
     void set_included_angle(float angle_degree);
-
+    void set_max_wheel_speed(float max_spd);
     /*
      * Set motor "target speed" (not immediate speed, acceleration is needed), 
      * which is essentially motor output pwr (or acceleration that's not constant, 

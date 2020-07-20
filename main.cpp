@@ -19,64 +19,72 @@ typedef boost::asio::ip::tcp tcp;
 std::ostream& operator<<(std::ostream& os, const arma::vec& v);
 
 int main(int argc, char **argv) {
-
     B_Log::static_init();
     B_Log::sink->set_filter(severity >= Info);
     
 
-    udp::endpoint grsim_ssl_vision_ep(ip::address::from_string("224.5.23.2"), 10020);
-    udp::endpoint grsim_console_ep(ip::address::from_string(LOCAL_HOST), 20011);
+
+
+//     udp::endpoint grsim_ssl_vision_ep(ip::address::from_string("224.5.23.2"), 10020);
+//     udp::endpoint grsim_console_ep(ip::address::from_string(LOCAL_HOST), 20011);
     
-    Sensor_System sensors(BLUE, 0, grsim_ssl_vision_ep);
-    Actuator_System actuators(BLUE, 0, grsim_console_ep);
+//     Sensor_System sensors(BLUE, 0, grsim_ssl_vision_ep);
+//     Actuator_System actuators(BLUE, 0, grsim_console_ep);
+
+    
 
 
-    delay(500); 
+//     delay(500); 
+//     /*
+//     actuators.move(arma::vec("100 0 0"));
+//     actuators.move(arma::vec("0 100 0"));
+//     actuators.move(arma::vec("0 -100 0"));
+//     actuators.move(arma::vec("-100 0 0"));
+//     actuators.move(arma::vec("70.70 70.70 0"));
+// */
+//     // sqrt( x^2 + y^2 + z^2 ) <= 100
+//     // x^2 + y^2 <= 10000
 
-    // mute all logs
-    B_Log::sink->set_filter(severity > Fatal);
+//     // mute all logs
+//     B_Log::sink->set_filter(severity > Fatal);
 
 
-    double m1, m2, m3, m4;
-    vec d = {0, 0}, v = {0, 0}, prev_d = {0, 0}, prev_v = {0, 0};
-    double theta, omega, prev_theta = 0.00, prev_omega = 0.00;
-    while(1) {
-        std::cin >> m1 >> m2 >> m3 >> m4;
-
-        B_Log::set_shortest_format();
-        // B_Log::sink->set_filter(tag_attr == "vision data" && severity == Trace);
+//     double m1, m2, m3, m4;
+//     double vx, vy, vw;
+//     vec d = {0, 0}, v = {0, 0}, prev_d = {0, 0}, prev_v = {0, 0};
+//     double theta, omega, prev_theta = 0.00, prev_omega = 0.00;
+//     while(1) {
+//         // std::cin >> m1 >> m2 >> m3 >> m4;
+//         std::cin >> vx >> vy >> vw;
+//         vec mv = {vx, vy, vw};
+//         B_Log::set_shortest_format();
+//         B_Log::sink->set_filter(tag_attr == "motion cmd" && severity == Trace);
         
-        sensors.init();
-        int t0 = millis();
-        while(millis() - t0 < 1000) {
-            actuators.set_wheels_speeds(m1, m2, m3, m4);
-            d = sensors.get_translational_displacement();
-            v = sensors.get_translational_velocity();
-            theta = sensors.get_rotational_displacement();
-            omega = sensors.get_rotational_velocity();
-            // if(!arma::approx_equal(v, prev_v, "absdiff", 0,00001) || omega != prev_omega ) { 
-                std::cout << d << " " 
-                          << v << " "
-                          << theta << " " 
-                          << omega 
-                          << " time: " << millis() - t0 << " ms" << std::endl;  
-            // }
-            /*
-            std::cout << d(0) << ", " << d(1) << ", "
-                      << v(0) << ", " << v(1) << ", "
-                      << theta << ", "
-                      << omega << ", " 
-                      << sensors.get_curr_timestamp() << std::endl;
-            */
-            delay(10);
-            prev_d = d; prev_v = v; prev_theta = theta; prev_omega = omega;
-        }
+//         sensors.init();
+//         int t0 = millis();
+//         while(millis() - t0 < 1000) {
+//             // actuators.set_wheels_speeds(m1, m2, m3, m4);
+//             actuators.move(mv);
+//             d = sensors.get_translational_displacement();
+//             v = sensors.get_translational_velocity();
+//             theta = sensors.get_rotational_displacement();
+//             omega = sensors.get_rotational_velocity();
+//             // if(!arma::approx_equal(v, prev_v, "absdiff", 0,00001) || omega != prev_omega ) { 
+//                 std::cout << d << " " 
+//                           << v << " "
+//                           << theta << " " 
+//                           << omega 
+//                           << " time: " << millis() - t0 << " ms" << std::endl;  
+//             // }
+//             delay(10);
+//             prev_d = d; prev_v = v; prev_theta = theta; prev_omega = omega;
+//         }
         
-        B_Log::sink->set_filter(severity >= Info);
+//         B_Log::sink->set_filter(severity >= Info);
 
-        t0 = millis();
-        while(millis() - t0 < 100) actuators.stop();
-    }
+//         t0 = millis();
+//         while(millis() - t0 < 100) actuators.stop();
+//     }
 
 /*
     boost::mutex mu;
