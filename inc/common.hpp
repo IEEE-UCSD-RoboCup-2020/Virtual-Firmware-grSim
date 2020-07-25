@@ -10,6 +10,9 @@
 #include <boost/array.hpp>
 #include <boost/signals2.hpp>
 
+#include "rapidjson/document.h"
+#include "rapidjson/istreamwrapper.h"
+#include "rapidjson/error/en.h"
 
 #include "grSim_Packet.pb.h"
 #include "grSim_Commands.pb.h"

@@ -8,6 +8,7 @@
 using namespace boost;
 using namespace boost::asio;
 using namespace arma;
+using namespace rapidjson;
 typedef boost::asio::ip::udp udp;
 typedef boost::asio::ip::tcp tcp;
 typedef boost::shared_ptr<ip::tcp::socket> socket_ptr;
@@ -21,32 +22,66 @@ typedef boost::shared_ptr<ip::tcp::socket> socket_ptr;
 std::ostream& operator<<(std::ostream& os, const arma::vec& v);
 
 int main(int argc, char *argv[]) {
+    Document document;
+
+    unsigned int port = 0;
+    double data_up_freq_hz = 1;
 
     B_Log::static_init();
     B_Log::sink->set_filter(severity >= Info);
     
     B_Log logger;
-
-
     
     if(argc != 2) {
-        logger(Error) << "There should be one cmd argument";  
-    }
-    unsigned int port = 0;
+        logger(Info) << "Reading from JSON file.";
 
-    try {
-        port = std::stoi( std::string(argv[1]), nullptr, 10 );
-    }
-    catch (std::exception& e){
-        logger(Error) << "Invalid characters in argument.";  
-    }
+        std::ifstream file("settings.json");
+        if ( !file ) {
+            logger(Error) << "JSON file does not exist.";
+            return 1;
+        }
 
-    double data_up_freq_hz = 1;    
+        IStreamWrapper isw(file);
+        document.ParseStream(isw);
 
+        if (document.HasParseError()) {
+            logger(Error) << "JSON file is not formatted correctly.";
+            return 1;
+        }
+
+        for (auto& m : document.GetObject()) {
+            //printf("Type of member %s is %s\n", m.name.GetString(), kTypeNames[m.value.GetType()]);
+            if ( strncmp(m.name.GetString(), "port", 20) == 0 ) {
+                if ( m.value.IsNumber() ) {
+                    port = m.value.GetUint();
+                }
+                else {
+                    logger.log(Error, "port is invalid.");
+                }
+            }
+            else if ( strncmp(m.name.GetString(), "data_up_freq_hz", 20) == 0 ) {
+                if ( m.value.IsNumber() ) {
+                    data_up_freq_hz = m.value.GetDouble();
+                }
+                else {
+                    logger.log(Error, "data_up_freq_hz is invalid.");
+                }
+                
+            }
+        }  
+        file.close(); 
+    }
+    else {
+        try {
+            port = std::stoi( std::string(argv[1]), nullptr, 10 );
+        }
+        catch (std::exception& e){
+            logger(Error) << "Invalid characters in argument.";  
+        }
+    }   
 
     io_service service;
-    
-    
+        
     ip::tcp::endpoint endpoint_to_listen(ip::tcp::v4(), port);
     
     ip::tcp::acceptor acceptor(service, endpoint_to_listen);
