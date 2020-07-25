@@ -4,6 +4,7 @@
 #include "actuators.hpp"
 #include "sensors.hpp"
 #include "pid.hpp"
+#include "protobuf-auto-gen/message.pb.h"
 
 using namespace boost;
 using namespace boost::asio;
@@ -26,6 +27,8 @@ int main(int argc, char *argv[]) {
     B_Log::sink->set_filter(severity >= Info);
     
     B_Log logger;
+
+    example::Message message;
 
 
     
@@ -66,20 +69,26 @@ int main(int argc, char *argv[]) {
     }
 
     // read command from the client
-    boost::thread cmd_thread([&socket]()     
+    boost::thread cmd_thread([&]()     
     {
         B_Log logger;
-        asio::streambuf read_buffer;
-        std::istream input_stream(&read_buffer);
         std::string received;
+        std::ofstream of("output.txt");
 
         try{
             while(true){
 
+                asio::streambuf read_buffer;
+                std::istream input_stream(&read_buffer);
+                input_stream.clear();
+            
                 asio::read_until(*socket, read_buffer, "\n");
 
                 received = std::string(std::istreambuf_iterator<char>(input_stream), {});
-                logger.log(Info, received);
+                
+                message.ParseFromString(received);
+    
+                logger.log(Info, message.mesg());
 
                 boost::asio::write(*socket, boost::asio::buffer("received!\n"));
                  
