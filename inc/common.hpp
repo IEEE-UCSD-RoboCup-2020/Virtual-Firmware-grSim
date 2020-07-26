@@ -4,6 +4,7 @@
 #include <iostream>
 #include <armadillo>
 #include <math.h>
+#include <unistd.h>
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 #include <boost/thread/thread.hpp>

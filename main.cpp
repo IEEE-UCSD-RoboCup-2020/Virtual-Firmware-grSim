@@ -22,17 +22,33 @@ typedef boost::shared_ptr<ip::tcp::socket> socket_ptr;
 std::ostream& operator<<(std::ostream& os, const arma::vec& v);
 
 int main(int argc, char *argv[]) {
-    Document document;
-
-    unsigned int port = 0;
-    double data_up_freq_hz = 1;
-
     B_Log::static_init();
     B_Log::sink->set_filter(severity >= Info);
     
     B_Log logger;
+
+    bool tcp = true;
+    char option;
+
+    unsigned int port = 0;
+    double data_up_freq_hz = 1;
+
+    while ( (option = getopt(argc,argv,":u")) != -1 ) {
+        switch(option) {
+            case 'u':
+                tcp = false;
+                break;
+            case '?':
+                printf("Unknown option: %c\n", optopt);
+                break;
+        } 
+    }
+    if ( optind < argc ) {
+        port = std::stoi( std::string(argv[optind]), nullptr, 10 );
+    }
+    Document document;
     
-    if(argc != 2) {
+    if(port <= 0) {
         logger(Info) << "Reading from JSON file.";
 
         std::ifstream file("settings.json");
@@ -71,81 +87,78 @@ int main(int argc, char *argv[]) {
         }  
         file.close(); 
     }
-    else {
-        try {
-            port = std::stoi( std::string(argv[1]), nullptr, 10 );
-        }
-        catch (std::exception& e){
-            logger(Error) << "Invalid characters in argument.";  
-        }
-    }   
 
     io_service service;
         
-    ip::tcp::endpoint endpoint_to_listen(ip::tcp::v4(), port);
+    if ( tcp ) {
+        ip::tcp::endpoint endpoint_to_listen(ip::tcp::v4(), port);
     
-    ip::tcp::acceptor acceptor(service, endpoint_to_listen);
+        ip::tcp::acceptor acceptor(service, endpoint_to_listen);
 
-    cout << ">> Server started, port number: " << repr(port) << endl;
+        cout << ">> Server started, port number: " << repr(port) << endl;
 
-    socket_ptr socket(new ip::tcp::socket(service));
+        socket_ptr socket(new ip::tcp::socket(service));
 
-    try {
-        acceptor.accept(*socket); // blocking func
+        try {
+            acceptor.accept(*socket); // blocking func
 
-        cout << "Accepted socket request from: " << socket->remote_endpoint().address().to_string() << endl;
-    }
-    catch(std::exception& e)
-    {
-        logger.log(Error, "[Exception]" + std::string(e.what()));
-    }
-
-    // read command from the client
-    boost::thread cmd_thread([&socket]()     
-    {
-        B_Log logger;
-        asio::streambuf read_buffer;
-        std::istream input_stream(&read_buffer);
-        std::string received;
-
-        try{
-            while(true){
-
-                asio::read_until(*socket, read_buffer, "\n");
-
-                received = std::string(std::istreambuf_iterator<char>(input_stream), {});
-                logger.log(Info, received);
-
-                boost::asio::write(*socket, boost::asio::buffer("received!\n"));
-                 
-            }
+            cout << "Accepted socket request from: " << socket->remote_endpoint().address().to_string() << endl;
         }
-        catch (std::exception& e) {
+        catch(std::exception& e)
+        {
             logger.log(Error, "[Exception]" + std::string(e.what()));
         }
 
-    });
+        // read command from the client
+        boost::thread cmd_thread([&socket]()     
+        {
+            B_Log logger;
+            asio::streambuf read_buffer;
+            std::istream input_stream(&read_buffer);
+            std::string received;
 
-    // sent data to the client 
-    boost::thread data_thread([&socket, &data_up_freq_hz]()     
-    {
-        B_Log logger;
-        std::string write;
+            try{
+                while(true){
 
-        try{
-            while(true){
-                write = "Hello World!\n";
-                boost::asio::write(*socket, boost::asio::buffer(write));
-                delay(1.00/data_up_freq_hz * 1000.00);
+                    asio::read_until(*socket, read_buffer, "\n");
+
+                    received = std::string(std::istreambuf_iterator<char>(input_stream), {});
+                    logger.log(Info, received);
+
+                    boost::asio::write(*socket, boost::asio::buffer("received!\n"));
+                    
+                }
             }
-        }
-        catch (std::exception& e) {
-            logger.log(Error, "[Exception]" + std::string(e.what()));
-        }
-    });        
+            catch (std::exception& e) {
+                logger.log(Error, "[Exception]" + std::string(e.what()));
+            }
 
-    cmd_thread.join();
-    data_thread.join();
+        });
+
+        // sent data to the client 
+        boost::thread data_thread([&socket, &data_up_freq_hz]()     
+        {
+            B_Log logger;
+            std::string write;
+
+            try{
+                while(true){
+                    write = "Hello World!\n";
+                    boost::asio::write(*socket, boost::asio::buffer(write));
+                    delay(1.00/data_up_freq_hz * 1000.00);
+                }
+            }
+            catch (std::exception& e) {
+                logger.log(Error, "[Exception]" + std::string(e.what()));
+            }
+        });        
+
+        cmd_thread.join();
+        data_thread.join();
+    }
+    else {
+
+    }
 
     return 0;
 
