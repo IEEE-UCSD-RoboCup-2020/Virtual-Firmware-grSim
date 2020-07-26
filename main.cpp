@@ -4,6 +4,7 @@
 #include "actuators.hpp"
 #include "sensors.hpp"
 #include "pid.hpp"
+#include "protobuf-auto-gen/vFirmware_API.pb.h"
 
 using namespace boost;
 using namespace boost::asio;
@@ -12,7 +13,7 @@ using namespace rapidjson;
 typedef boost::asio::ip::udp udp;
 typedef boost::asio::ip::tcp tcp;
 typedef boost::shared_ptr<ip::tcp::socket> socket_ptr;
-
+typedef boost::shared_ptr<ip::udp::socket> udp_socket_ptr;
 
 /* Some constants:
  * motor max speed around 416 rpm at 1N*m torque load
@@ -28,7 +29,21 @@ int main(int argc, char *argv[]) {
     B_Log logger;
 
     bool tcp = true;
+    unsigned int robot_id = 0;
+    bool is_blue = true;
+    std::string grSim_vision_ip;
+    unsigned int grSim_vision_port = 0;
     char option;
+
+    /* Protobuf Variables */
+    VF_Commands commands;
+    bool init = false;
+    float trans_vec_x = 0;
+    float trans_vec_y = 0;
+    float rotate = 0;
+    float kick_vec_x = 0;
+    float kick_vec_y = 0;
+    bool drib = false;
 
     unsigned int port = 0;
     double data_up_freq_hz = 1;
@@ -43,53 +58,88 @@ int main(int argc, char *argv[]) {
                 break;
         } 
     }
-    if ( optind < argc ) {
-        port = std::stoi( std::string(argv[optind]), nullptr, 10 );
+
+    // 0 1 2 3
+    // 1 2 3 4
+
+    if ( optind + 3 == argc ) {
+        for ( int i = optind; i < argc; i++ ) {
+            if ( i == argc - 3 ) {
+                port = std::stoi( std::string(argv[i]), nullptr, 10 );
+            }
+            if ( i == argc - 2 ) {
+                robot_id = std::stoi( std::string(argv[i]), nullptr, 10 );
+            }
+            if ( i == argc - 1 ) {
+                is_blue = std::stoi( std::string(argv[i]), nullptr, 10 );
+            }
+        }
     }
-    Document document;
+    else {
+        logger(Error) << "Not enough arguments";
+        return 1;
+    }
     
-    if(port <= 0) {
-        logger(Info) << "Reading from JSON file.";
+    Document document;
+    logger(Info) << "Reading from JSON file.";
 
-        std::ifstream file("settings.json");
-        if ( !file ) {
-            logger(Error) << "JSON file does not exist.";
-            return 1;
-        }
-
-        IStreamWrapper isw(file);
-        document.ParseStream(isw);
-
-        if (document.HasParseError()) {
-            logger(Error) << "JSON file is not formatted correctly.";
-            return 1;
-        }
-
-        for (auto& m : document.GetObject()) {
-            //printf("Type of member %s is %s\n", m.name.GetString(), kTypeNames[m.value.GetType()]);
-            if ( strncmp(m.name.GetString(), "port", 20) == 0 ) {
-                if ( m.value.IsNumber() ) {
-                    port = m.value.GetUint();
-                }
-                else {
-                    logger.log(Error, "port is invalid.");
-                }
-            }
-            else if ( strncmp(m.name.GetString(), "data_up_freq_hz", 20) == 0 ) {
-                if ( m.value.IsNumber() ) {
-                    data_up_freq_hz = m.value.GetDouble();
-                }
-                else {
-                    logger.log(Error, "data_up_freq_hz is invalid.");
-                }
-                
-            }
-        }  
-        file.close(); 
+    std::ifstream file("settings.json");
+    if ( !file ) {
+        logger(Error) << "JSON file does not exist.";
+        return 1;
     }
+
+    IStreamWrapper isw(file);
+    document.ParseStream(isw);
+
+    if (document.HasParseError()) {
+        logger(Error) << "JSON file is not formatted correctly.";
+        return 1;
+    }
+
+    for (auto& m : document.GetObject()) {
+        //printf("Type of member %s is %s\n", m.name.GetString(), kTypeNames[m.value.GetType()]);
+        if ( strncmp(m.name.GetString(), "data_up_freq_hz", 20) == 0 ) {
+            if ( m.value.IsNumber() ) {
+                data_up_freq_hz = m.value.GetDouble();
+            }
+            else {
+                logger.log(Error, "data_up_freq_hz is invalid.");
+            }
+        }
+        else if ( strncmp(m.name.GetString(), "grSim_vision_ip", 20) == 0 ) {
+            if ( m.value.IsString() ) {
+                grSim_vision_ip = m.value.GetString();
+            }
+            else {
+                logger.log(Error, "grSim_vision_ip is invalid.");
+            }
+            
+        }
+        else if ( strncmp(m.name.GetString(), "grSim_vision_port", 20) == 0 ) {
+            if ( m.value.IsNumber() ) {
+                grSim_vision_port = m.value.GetUint();
+            }
+            else {
+                logger.log(Error, "grSim_vision_port is invalid.");
+            }
+            
+        }
+    }  
+    file.close(); 
+
+// ================================================================================================================ //
 
     io_service service;
-        
+
+    udp::endpoint grsim_ssl_vision_ep(ip::address::from_string(grSim_vision_ip), grSim_vision_port);
+    udp::endpoint grsim_console_ep(ip::address::from_string(LOCAL_HOST), 20011);
+    
+    Sensor_System sensors(is_blue?BLUE:YELLOW, robot_id, grsim_ssl_vision_ep);
+    Actuator_System actuators(is_blue?BLUE:YELLOW, robot_id, grsim_console_ep);
+
+
+
     if ( tcp ) {
         ip::tcp::endpoint endpoint_to_listen(ip::tcp::v4(), port);
     
@@ -110,7 +160,7 @@ int main(int argc, char *argv[]) {
         }
 
         // read command from the client
-        boost::thread cmd_thread([&socket]()     
+        boost::thread cmd_thread([&]()     
         {
             B_Log logger;
             asio::streambuf read_buffer;
@@ -118,15 +168,48 @@ int main(int argc, char *argv[]) {
             std::string received;
 
             try{
+                asio::streambuf init_buffer;
+                std::istream init_stream(&init_buffer);
+                logger.log(Info, "Waiting for censor init request...\n");
+                
+                while(!init) {
+                    asio::read_until(*socket, init_buffer, "\n");
+                    received = std::string(std::istreambuf_iterator<char>(init_stream), {});
+                    commands.ParseFromString(received);
+                    init = commands.init();
+                    sensors.init();
+                }
+                
                 while(true){
-
+                    asio::streambuf read_buffer;
+                    std::istream input_stream(&read_buffer);
+                    // input_stream.clear();
+                
                     asio::read_until(*socket, read_buffer, "\n");
 
                     received = std::string(std::istreambuf_iterator<char>(input_stream), {});
-                    logger.log(Info, received);
-
-                    boost::asio::write(*socket, boost::asio::buffer("received!\n"));
                     
+                    commands.ParseFromString(received);
+                    trans_vec_x = commands.translational_output().x();
+                    trans_vec_y = commands.translational_output().y();
+                    rotate = commands.rotational_output();
+                    kick_vec_x = commands.kicker().x();
+                    kick_vec_y = commands.kicker().y();
+                    drib = commands.dribbler();
+
+                    logger.log(Info,
+                        "\ntranslational_output x y: " + repr(trans_vec_x) + " " + repr(trans_vec_y) + "\n" 
+                        + "rotational_output: " + repr(rotate) + "\n"
+                        + "kicker x y: " + repr(kick_vec_x) + " " + repr(kick_vec_y) + "\n"
+                        + "dribbler: " + repr(drib) + "\n");
+
+                    
+                    arma::vec trans_vec = {trans_vec_x, trans_vec_y, rotate};
+                    actuators.move(trans_vec);
+                    actuators.kick(kick_vec_x, kick_vec_y);
+                    if(drib) actuators.turn_on_dribbler();
+                    else actuators.turn_off_dribbler();
+                        
                 }
             }
             catch (std::exception& e) {
@@ -157,49 +240,38 @@ int main(int argc, char *argv[]) {
         data_thread.join();
     }
     else {
-        ip::udp::endpoint ep_listen(ip::udp::v4(), port);
+        // ip::udp::endpoint ep_listen(ip::udp::v4(), port);
 
-        cout << ">> Server started, port number: " << repr(port) << endl;
+        // cout << ">> Server started, port number: " << repr(port) << endl;
 
-        socket_ptr socket(new ip::udp::socket(service, ep_listen));
+        // udp_socket_ptr socket(new ip::udp::socket(service, ep_listen));
 
-        try {
-            acceptor.accept(*socket); // blocking func
+        // boost::array<char, 1024> receive_buffer; 
 
-            cout << "Accepted socket request from: " << socket->remote_endpoint().address().to_string() << endl;
-        }
-        catch(std::exception& e)
-        {
-            logger.log(Error, "[Exception]" + std::string(e.what()));
-        }
+        // // read command from the client
+        // boost::thread cmd_thread([&socket]()     
+        // {
+        //     B_Log logger;
+        //     asio::streambuf read_buffer;
+        //     std::istream input_stream(&read_buffer);
+        //     std::string received;
 
-        // read command from the client
-        boost::thread cmd_thread([&socket]()     
-        {
-            B_Log logger;
-            asio::streambuf read_buffer;
-            std::istream input_stream(&read_buffer);
-            std::string received;
+        //     try{
+        //         while(true){
 
-            try{
-                while(true){
+        //             asio::read_until(*socket, read_buffer, "\n");
 
-                    asio::read_until(*socket, read_buffer, "\n");
+        //             received = std::string(std::istreambuf_iterator<char>(input_stream), {});
+        //             logger.log(Info, received);
+        //         }
+        //     }
+        //     catch (std::exception& e) {
+        //         logger.log(Error, "[Exception]" + std::string(e.what()));
+        //     }
 
-                    received = std::string(std::istreambuf_iterator<char>(input_stream), {});
-                    logger.log(Info, received);
+        // });
 
-                    boost::asio::write(*socket, boost::asio::buffer("received!\n"));
-                    
-                }
-            }
-            catch (std::exception& e) {
-                logger.log(Error, "[Exception]" + std::string(e.what()));
-            }
-
-        });
-
-        cmd_thread.join();
+        // cmd_thread.join();
     }
 
     return 0;

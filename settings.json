@@ -1,4 +1,5 @@
 {
-    "port": 6666,
-    "data_up_freq_hz": 1
+    "data_up_freq_hz": 1,
+    "grSim_vision_ip": "224.5.23.2",
+    "grSim_vision_port": 10020
 }
