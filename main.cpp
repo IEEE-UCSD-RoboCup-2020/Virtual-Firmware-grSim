@@ -157,7 +157,49 @@ int main(int argc, char *argv[]) {
         data_thread.join();
     }
     else {
+        ip::udp::endpoint ep_listen(ip::udp::v4(), port);
 
+        cout << ">> Server started, port number: " << repr(port) << endl;
+
+        socket_ptr socket(new ip::udp::socket(service, ep_listen));
+
+        try {
+            acceptor.accept(*socket); // blocking func
+
+            cout << "Accepted socket request from: " << socket->remote_endpoint().address().to_string() << endl;
+        }
+        catch(std::exception& e)
+        {
+            logger.log(Error, "[Exception]" + std::string(e.what()));
+        }
+
+        // read command from the client
+        boost::thread cmd_thread([&socket]()     
+        {
+            B_Log logger;
+            asio::streambuf read_buffer;
+            std::istream input_stream(&read_buffer);
+            std::string received;
+
+            try{
+                while(true){
+
+                    asio::read_until(*socket, read_buffer, "\n");
+
+                    received = std::string(std::istreambuf_iterator<char>(input_stream), {});
+                    logger.log(Info, received);
+
+                    boost::asio::write(*socket, boost::asio::buffer("received!\n"));
+                    
+                }
+            }
+            catch (std::exception& e) {
+                logger.log(Error, "[Exception]" + std::string(e.what()));
+            }
+
+        });
+
+        cmd_thread.join();
     }
 
     return 0;
