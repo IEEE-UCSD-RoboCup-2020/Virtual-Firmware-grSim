@@ -167,24 +167,32 @@ int main(int argc, char *argv[]) {
             std::istream input_stream(&read_buffer);
             std::string received;
 
-            try{
-                asio::streambuf init_buffer;
-                std::istream init_stream(&init_buffer);
+            asio::streambuf init_buffer;
+            std::istream init_stream(&init_buffer);
+
+            try {
                 logger.log(Info, "Waiting for censor init request...\n");
                 
                 while(!init) {
+                    
                     asio::read_until(*socket, init_buffer, "\n");
                     received = std::string(std::istreambuf_iterator<char>(init_stream), {});
                     commands.ParseFromString(received);
+
                     init = commands.init();
-                    sensors.init();
+                    logger.log(Info, repr(init));
+                    if(init) sensors.init();
                 }
+
+                logger.log(Info, "Init successful!");
                 
                 while(true){
-                    asio::streambuf read_buffer;
-                    std::istream input_stream(&read_buffer);
+                    // asio::streambuf read_buffer;
+                    // std::istream input_stream(&read_buffer);
                     // input_stream.clear();
-                
+
+                    logger.log(Info, "Waiting for commands...");
+
                     asio::read_until(*socket, read_buffer, "\n");
 
                     received = std::string(std::istreambuf_iterator<char>(input_stream), {});
