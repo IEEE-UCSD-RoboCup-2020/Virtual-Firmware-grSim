@@ -4,7 +4,7 @@
 #include "actuators.hpp"
 #include "sensors.hpp"
 #include "pid.hpp"
-#include "protobuf-auto-gen/message.pb.h"
+#include "protobuf-auto-gen/vFirmware_API.pb.h"
 
 using namespace boost;
 using namespace boost::asio;
@@ -28,7 +28,15 @@ int main(int argc, char *argv[]) {
     
     B_Log logger;
 
-    example::Message message;
+    /* Protobuf Variables */
+    VF_Commands commands;
+    bool init = false;
+    float trans_vec_x = 0;
+    float trans_vec_y = 0;
+    float rotate = 0;
+    float kick_vec_x = 0;
+    float kick_vec_y = 0;
+    bool drib = false;
 
 
     
@@ -86,9 +94,21 @@ int main(int argc, char *argv[]) {
 
                 received = std::string(std::istreambuf_iterator<char>(input_stream), {});
                 
-                message.ParseFromString(received);
-    
-                logger.log(Info, message.mesg());
+                commands.ParseFromString(received);
+                
+                init = commands.init();
+                trans_vec_x = commands.translational_output().x();
+                trans_vec_y = commands.translational_output().y();
+                rotate = commands.rotational_output();
+                kick_vec_x = commands.kicker().x();
+                kick_vec_y = commands.kicker().y();
+                drib = commands.dribbler();
+
+                logger.log(Info,
+                     "\ntranslational_output x y: " + repr(trans_vec_x) + " " + repr(trans_vec_y) + "\n" 
+                    + "rotational_output: " + repr(rotate) + "\n"
+                    + "kicker x y: " + repr(kick_vec_x) + " " + repr(kick_vec_y) + "\n"
+                    + "dribbler: " + repr(drib) + "\n");
 
                 boost::asio::write(*socket, boost::asio::buffer("received!\n"));
                  
