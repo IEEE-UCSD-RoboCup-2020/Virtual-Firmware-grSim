@@ -6,6 +6,10 @@
 #include "pid.hpp"
 #include "protobuf-auto-gen/vFirmware_API.pb.h"
 
+
+#define RECEIVE_BUFFER_SIZE 1024
+
+
 using namespace boost;
 using namespace boost::asio;
 using namespace arma;
@@ -21,6 +25,7 @@ typedef boost::shared_ptr<ip::udp::socket> udp_socket_ptr;
  */
 
 std::ostream& operator<<(std::ostream& os, const arma::vec& v);
+void help_print();
 
 int main(int argc, char *argv[]) {
     B_Log::static_init();
@@ -32,7 +37,9 @@ int main(int argc, char *argv[]) {
     unsigned int robot_id = 0;
     bool is_blue = true;
     std::string grSim_vision_ip;
-    unsigned int grSim_vision_port = 0;
+    std::string grSim_console_ip;
+    unsigned int grSim_vision_port;
+    unsigned int grSim_console_port; 
     char option;
 
     /* Protobuf Variables */
@@ -55,6 +62,8 @@ int main(int argc, char *argv[]) {
                 break;
             case '?':
                 printf("Unknown option: %c\n", optopt);
+                help_print();
+                return 1;
                 break;
         } 
     }
@@ -76,14 +85,15 @@ int main(int argc, char *argv[]) {
         }
     }
     else {
-        logger(Error) << "Not enough arguments";
+        printf("Not enough arguments\n");
+        help_print();
         return 1;
     }
     
     Document document;
     logger(Info) << "Reading from JSON file.";
 
-    std::ifstream file("settings.json");
+    std::ifstream file("robot_config.json");
     if ( !file ) {
         logger(Error) << "JSON file does not exist.";
         return 1;
@@ -123,7 +133,22 @@ int main(int argc, char *argv[]) {
             else {
                 logger.log(Error, "grSim_vision_port is invalid.");
             }
-            
+        }
+        else if(strncmp(m.name.GetString(), "grSim_console_ip", 20) == 0) {
+            if(m.value.IsString()) {
+                grSim_console_ip = m.value.GetString();
+            }
+            else {
+                logger.log(Error, "grSim_console_ip is invalid.");
+            }
+        }
+        else if(strncmp(m.name.GetString(), "grSim_console_port", 20) == 0) {
+            if(m.value.IsNumber()) {
+                grSim_console_port = m.value.GetUint();
+            }
+            else {
+                logger.log(Error, "grSim_console_port is invalid.");
+            }
         }
     }  
     file.close(); 
@@ -132,9 +157,11 @@ int main(int argc, char *argv[]) {
 
     io_service service;
 
+    // instantiate grSim simulator endpoints
     udp::endpoint grsim_ssl_vision_ep(ip::address::from_string(grSim_vision_ip), grSim_vision_port);
-    udp::endpoint grsim_console_ep(ip::address::from_string(LOCAL_HOST), 20011);
+    udp::endpoint grsim_console_ep(ip::address::from_string(grSim_console_ip), grSim_console_port);
     
+    // instantiate sensor and actuator systems
     Sensor_System sensors(is_blue?BLUE:YELLOW, robot_id, grsim_ssl_vision_ep);
     Actuator_System actuators(is_blue?BLUE:YELLOW, robot_id, grsim_console_ep);
 
@@ -171,7 +198,7 @@ int main(int argc, char *argv[]) {
             std::istream init_stream(&init_buffer);
 
             try {
-                logger.log(Info, "Waiting for censor init request...\n");
+                logger.log(Info, "Waiting for sensor init request...\n");
                 
                 while(!init) {
                     
@@ -187,9 +214,6 @@ int main(int argc, char *argv[]) {
                 logger.log(Info, "Init successful!");
                 
                 while(true){
-                    // asio::streambuf read_buffer;
-                    // std::istream input_stream(&read_buffer);
-                    // input_stream.clear();
 
                     logger.log(Info, "Waiting for commands...");
 
@@ -217,7 +241,6 @@ int main(int argc, char *argv[]) {
                     actuators.kick(kick_vec_x, kick_vec_y);
                     if(drib) actuators.turn_on_dribbler();
                     else actuators.turn_off_dribbler();
-                        
                 }
             }
             catch (std::exception& e) {
@@ -227,14 +250,30 @@ int main(int argc, char *argv[]) {
         });
 
         // sent data to the client 
-        boost::thread data_thread([&socket, &data_up_freq_hz]()     
+        boost::thread data_thread([&]()     
         {
             B_Log logger;
             std::string write;
+            VF_Data data;
+            arma::vec tdisp, tvel;
+            Vec_2D trans_disp, trans_vel;
 
             try{
                 while(true){
-                    write = "Hello World!\n";
+                    tdisp = sensors.get_translational_displacement();
+                    trans_disp.set_x(tdisp(0));
+                    trans_disp.set_y(tdisp(1));
+                    data.set_allocated_translational_displacement(&trans_disp);
+
+                    tvel = sensors.get_translational_velocity();
+                    trans_vel.set_x(tvel(0));
+                    trans_vel.set_y(tvel(1));
+                    data.set_allocated_translational_velocity(&trans_vel);
+                    
+                    data.set_rotational_displacement(sensors.get_rotational_displacement());
+                    data.set_rotational_velocity(sensors.get_rotational_velocity());
+
+                    data.SerializeToString(&write);
                     boost::asio::write(*socket, boost::asio::buffer(write));
                     delay(1.00/data_up_freq_hz * 1000.00);
                 }
@@ -248,38 +287,91 @@ int main(int argc, char *argv[]) {
         data_thread.join();
     }
     else {
-        // ip::udp::endpoint ep_listen(ip::udp::v4(), port);
+        ip::udp::endpoint ep_listen(ip::udp::v4(), port);
 
-        // cout << ">> Server started, port number: " << repr(port) << endl;
+        cout << ">> Server started, port number: " << repr(port) << endl;
 
-        // udp_socket_ptr socket(new ip::udp::socket(service, ep_listen));
+        udp_socket_ptr socket(new ip::udp::socket(service, ep_listen));
 
-        // boost::array<char, 1024> receive_buffer; 
+        boost::array<char, RECEIVE_BUFFER_SIZE> receive_buffer; 
 
-        // // read command from the client
-        // boost::thread cmd_thread([&socket]()     
-        // {
-        //     B_Log logger;
-        //     asio::streambuf read_buffer;
-        //     std::istream input_stream(&read_buffer);
-        //     std::string received;
+        // read command from the client
+        boost::thread cmd_thread([&]()     
+        {
+            B_Log logger;
 
-        //     try{
-        //         while(true){
+            std::string received;
+            unsigned int num_byte_received;
+            try{
+                while(true){
+                    num_byte_received = socket->receive_from(asio::buffer(receive_buffer), ep_listen);
+                    received = std::string(receive_buffer.begin(), receive_buffer.begin() + num_byte_received);
 
-        //             asio::read_until(*socket, read_buffer, "\n");
+                    commands.ParseFromString(received);
+                    trans_vec_x = commands.translational_output().x();
+                    trans_vec_y = commands.translational_output().y();
+                    rotate = commands.rotational_output();
+                    kick_vec_x = commands.kicker().x();
+                    kick_vec_y = commands.kicker().y();
+                    drib = commands.dribbler();
 
-        //             received = std::string(std::istreambuf_iterator<char>(input_stream), {});
-        //             logger.log(Info, received);
-        //         }
-        //     }
-        //     catch (std::exception& e) {
-        //         logger.log(Error, "[Exception]" + std::string(e.what()));
-        //     }
+                    logger.log(Info,
+                        "\ntranslational_output x y: " + repr(trans_vec_x) + " " + repr(trans_vec_y) + "\n" 
+                        + "rotational_output: " + repr(rotate) + "\n"
+                        + "kicker x y: " + repr(kick_vec_x) + " " + repr(kick_vec_y) + "\n"
+                        + "dribbler: " + repr(drib) + "\n");
 
-        // });
+                    
+                    arma::vec trans_vec = {trans_vec_x, trans_vec_y, rotate};
+                    actuators.move(trans_vec);
+                    actuators.kick(kick_vec_x, kick_vec_y);
+                    if(drib) actuators.turn_on_dribbler();
+                    else actuators.turn_off_dribbler();
 
-        // cmd_thread.join();
+                }
+            }
+            catch (std::exception& e) {
+                logger.log(Error, "[Exception]" + std::string(e.what()));
+            }
+        });
+
+        // sent data to the client 
+        boost::thread data_thread([&]()     
+        {
+            B_Log logger;
+            std::string write;
+            VF_Data data;
+            arma::vec tdisp, tvel;
+            Vec_2D trans_disp, trans_vel;
+
+            try{
+                while(true){
+                    tdisp = sensors.get_translational_displacement();
+                    trans_disp.set_x(tdisp(0));
+                    trans_disp.set_y(tdisp(1));
+                    data.set_allocated_translational_displacement(&trans_disp);
+
+                    tvel = sensors.get_translational_velocity();
+                    trans_vel.set_x(tvel(0));
+                    trans_vel.set_y(tvel(1));
+                    data.set_allocated_translational_velocity(&trans_vel);
+                    
+                    data.set_rotational_displacement(sensors.get_rotational_displacement());
+                    data.set_rotational_velocity(sensors.get_rotational_velocity());
+
+                    data.SerializeToString(&write);
+
+                    socket->send_to(asio::buffer(write), ep_listen);
+
+                    delay(1.00/data_up_freq_hz * 1000.00);
+                }
+            }
+            catch (std::exception& e) {
+                logger.log(Error, "[Exception]" + std::string(e.what()));
+            }
+        }); 
+
+        cmd_thread.join();
     }
 
     return 0;
@@ -378,7 +470,17 @@ int main(int argc, char *argv[]) {
 
 }
 
+void help_print() {
+    printf("Command:\n");
+    printf("./vfirm.exe (-u) <port> <robot_id> <is_blue>\n\n");
 
+    printf("Execute Parameters:\n");
+    printf("By default, launches TCP server.\n");
+    printf("\t-u: Changes to host UDP server.\n");
+    printf("\t<port>: Port to host server on.\n");
+    printf("\t<robot_id>: Defines which robot to control. Must be a non-negative number.\n");
+    printf("\t<is_blue>: Defines which team to control. Must be either 1 (true) or 0 (false)");
+}
 
 std::ostream& operator<<(std::ostream& os, const arma::vec& v)
 {

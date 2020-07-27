@@ -1,0 +1,7 @@
+{
+    "data_up_freq_hz": 100,
+    "grSim_vision_ip": "224.5.23.2",
+    "grSim_vision_port": 10020,
+    "grSim_console_ip" : "127.0.0.1",
+    "grSim_console_port" : 20011
+}
