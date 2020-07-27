@@ -165,7 +165,7 @@ int main(int argc, char *argv[]) {
     Sensor_System sensors(is_blue?BLUE:YELLOW, robot_id, grsim_ssl_vision_ep);
     Actuator_System actuators(is_blue?BLUE:YELLOW, robot_id, grsim_console_ep);
 
-
+    boost::mutex mu; 
 
     if ( tcp ) {
         ip::tcp::endpoint endpoint_to_listen(ip::tcp::v4(), port);
@@ -219,7 +219,9 @@ int main(int argc, char *argv[]) {
 
                     asio::read_until(*socket, read_buffer, "\n");
 
+                    mu.lock();
                     received = std::string(std::istreambuf_iterator<char>(input_stream), {});
+                    mu.unlock();
                     
                     commands.ParseFromString(received);
                     trans_vec_x = commands.translational_output().x();
@@ -274,7 +276,9 @@ int main(int argc, char *argv[]) {
                     data.set_rotational_velocity(sensors.get_rotational_velocity());
 
                     data.SerializeToString(&write);
+                    mu.lock();
                     boost::asio::write(*socket, boost::asio::buffer(write));
+                    mu.unlock();
                     delay(1.00/data_up_freq_hz * 1000.00);
                 }
             }
@@ -295,6 +299,8 @@ int main(int argc, char *argv[]) {
 
         boost::array<char, RECEIVE_BUFFER_SIZE> receive_buffer; 
 
+        
+
         // read command from the client
         boost::thread cmd_thread([&]()     
         {
@@ -302,10 +308,18 @@ int main(int argc, char *argv[]) {
 
             std::string received;
             unsigned int num_byte_received;
+
+            sensors.init();
+            
             try{
                 while(true){
+                    mu.lock();
                     num_byte_received = socket->receive_from(asio::buffer(receive_buffer), ep_listen);
+                    mu.unlock();
+                    
                     received = std::string(receive_buffer.begin(), receive_buffer.begin() + num_byte_received);
+
+                    logger.log(Debug, "xxx:" + received);
 
                     commands.ParseFromString(received);
                     trans_vec_x = commands.translational_output().x();
@@ -361,7 +375,9 @@ int main(int argc, char *argv[]) {
 
                     data.SerializeToString(&write);
 
+                    mu.lock();
                     socket->send_to(asio::buffer(write), ep_listen);
+                    mu.unlock();
 
                     delay(1.00/data_up_freq_hz * 1000.00);
                 }
@@ -372,6 +388,7 @@ int main(int argc, char *argv[]) {
         }); 
 
         cmd_thread.join();
+        data_thread.join();
     }
 
     return 0;
@@ -479,7 +496,7 @@ void help_print() {
     printf("\t-u: Changes to host UDP server.\n");
     printf("\t<port>: Port to host server on.\n");
     printf("\t<robot_id>: Defines which robot to control. Must be a non-negative number.\n");
-    printf("\t<is_blue>: Defines which team to control. Must be either 1 (true) or 0 (false)");
+    printf("\t<is_blue>: Defines which team to control. Must be either 1 (true) or 0 (false)\n");
 }
 
 std::ostream& operator<<(std::ostream& os, const arma::vec& v)
