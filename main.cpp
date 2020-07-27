@@ -254,6 +254,7 @@ int main(int argc, char *argv[]) {
         // sent data to the client 
         boost::thread data_thread([&]()     
         {
+            /*
             B_Log logger;
             std::string write;
             VF_Data data;
@@ -284,7 +285,7 @@ int main(int argc, char *argv[]) {
             }
             catch (std::exception& e) {
                 logger.log(Error, "[Exception]" + std::string(e.what()));
-            }
+            }*/
         });        
 
         cmd_thread.join();
