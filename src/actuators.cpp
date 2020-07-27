@@ -98,7 +98,7 @@ void Actuator_System::turn_off_dribbler() {
 void Actuator_System::kick(float speed_x, float speed_y) { 
     writer_lock(rwmu);
     kick_speed_x = speed_x; 
-    kick_speed_y = speed_y; 
+    kick_speed_y = speed_y;     
 }
 
 

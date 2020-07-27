@@ -19,6 +19,21 @@ typedef boost::asio::ip::tcp tcp;
 typedef boost::shared_ptr<ip::tcp::socket> socket_ptr;
 typedef boost::shared_ptr<ip::udp::socket> udp_socket_ptr;
 
+struct argVals {
+    bool tcp = true;
+    unsigned int robot_id = 0;
+    bool is_blue = true;
+    std::string grSim_vision_ip;
+    std::string grSim_console_ip;
+    unsigned int grSim_vision_port;
+    unsigned int grSim_console_port;
+
+    unsigned int port = 0;
+    double data_up_freq_hz = 1;
+
+    bool failed = false;
+};
+
 /* Some constants:
  * motor max speed around 416 rpm at 1N*m torque load
  * 416 rpm ~= 43.56 rad/s 
@@ -26,6 +41,7 @@ typedef boost::shared_ptr<ip::udp::socket> udp_socket_ptr;
 
 std::ostream& operator<<(std::ostream& os, const arma::vec& v);
 void help_print();
+argVals arg_proc( int count, char * args[], std::string filename );
 
 int main(int argc, char *argv[]) {
     B_Log::static_init();
@@ -33,14 +49,7 @@ int main(int argc, char *argv[]) {
     
     B_Log logger;
 
-    bool tcp = true;
-    unsigned int robot_id = 0;
-    bool is_blue = true;
-    std::string grSim_vision_ip;
-    std::string grSim_console_ip;
-    unsigned int grSim_vision_port;
-    unsigned int grSim_console_port; 
-    char option;
+    struct argVals json_vars;
 
     /* Protobuf Variables */
     VF_Commands commands;
@@ -52,127 +61,32 @@ int main(int argc, char *argv[]) {
     float kick_vec_y = 0;
     bool drib = false;
 
-    unsigned int port = 0;
-    double data_up_freq_hz = 1;
+    json_vars = arg_proc( argc, argv, "robot_config_json" );
 
-    while ( (option = getopt(argc,argv,":u")) != -1 ) {
-        switch(option) {
-            case 'u':
-                tcp = false;
-                break;
-            case '?':
-                printf("Unknown option: %c\n", optopt);
-                help_print();
-                return 1;
-                break;
-        } 
-    }
-
-    // 0 1 2 3
-    // 1 2 3 4
-
-    if ( optind + 3 == argc ) {
-        for ( int i = optind; i < argc; i++ ) {
-            if ( i == argc - 3 ) {
-                port = std::stoi( std::string(argv[i]), nullptr, 10 );
-            }
-            if ( i == argc - 2 ) {
-                robot_id = std::stoi( std::string(argv[i]), nullptr, 10 );
-            }
-            if ( i == argc - 1 ) {
-                is_blue = std::stoi( std::string(argv[i]), nullptr, 10 );
-            }
-        }
-    }
-    else {
-        printf("Not enough arguments\n");
-        help_print();
+    if ( json_vars.failed ) {
         return 1;
     }
-    
-    Document document;
-    logger(Info) << "Reading from JSON file.";
-
-    std::ifstream file("robot_config.json");
-    if ( !file ) {
-        logger(Error) << "JSON file does not exist.";
-        return 1;
-    }
-
-    IStreamWrapper isw(file);
-    document.ParseStream(isw);
-
-    if (document.HasParseError()) {
-        logger(Error) << "JSON file is not formatted correctly.";
-        return 1;
-    }
-
-    for (auto& m : document.GetObject()) {
-        //printf("Type of member %s is %s\n", m.name.GetString(), kTypeNames[m.value.GetType()]);
-        if ( strncmp(m.name.GetString(), "data_up_freq_hz", 20) == 0 ) {
-            if ( m.value.IsNumber() ) {
-                data_up_freq_hz = m.value.GetDouble();
-            }
-            else {
-                logger.log(Error, "data_up_freq_hz is invalid.");
-            }
-        }
-        else if ( strncmp(m.name.GetString(), "grSim_vision_ip", 20) == 0 ) {
-            if ( m.value.IsString() ) {
-                grSim_vision_ip = m.value.GetString();
-            }
-            else {
-                logger.log(Error, "grSim_vision_ip is invalid.");
-            }
-            
-        }
-        else if ( strncmp(m.name.GetString(), "grSim_vision_port", 20) == 0 ) {
-            if ( m.value.IsNumber() ) {
-                grSim_vision_port = m.value.GetUint();
-            }
-            else {
-                logger.log(Error, "grSim_vision_port is invalid.");
-            }
-        }
-        else if(strncmp(m.name.GetString(), "grSim_console_ip", 20) == 0) {
-            if(m.value.IsString()) {
-                grSim_console_ip = m.value.GetString();
-            }
-            else {
-                logger.log(Error, "grSim_console_ip is invalid.");
-            }
-        }
-        else if(strncmp(m.name.GetString(), "grSim_console_port", 20) == 0) {
-            if(m.value.IsNumber()) {
-                grSim_console_port = m.value.GetUint();
-            }
-            else {
-                logger.log(Error, "grSim_console_port is invalid.");
-            }
-        }
-    }  
-    file.close(); 
 
 // ================================================================================================================ //
 
     io_service service;
 
     // instantiate grSim simulator endpoints
-    udp::endpoint grsim_ssl_vision_ep(ip::address::from_string(grSim_vision_ip), grSim_vision_port);
-    udp::endpoint grsim_console_ep(ip::address::from_string(grSim_console_ip), grSim_console_port);
+    udp::endpoint grsim_ssl_vision_ep(ip::address::from_string(json_vars.grSim_vision_ip), json_vars.grSim_vision_port);
+    udp::endpoint grsim_console_ep(ip::address::from_string(json_vars.grSim_console_ip), json_vars.grSim_console_port);
     
     // instantiate sensor and actuator systems
-    Sensor_System sensors(is_blue?BLUE:YELLOW, robot_id, grsim_ssl_vision_ep);
-    Actuator_System actuators(is_blue?BLUE:YELLOW, robot_id, grsim_console_ep);
+    Sensor_System sensors(json_vars.is_blue?BLUE:YELLOW, json_vars.robot_id, grsim_ssl_vision_ep);
+    Actuator_System actuators(json_vars.is_blue?BLUE:YELLOW, json_vars.robot_id, grsim_console_ep);
 
     boost::mutex mu; 
 
-    if ( tcp ) {
-        ip::tcp::endpoint endpoint_to_listen(ip::tcp::v4(), port);
+    if ( json_vars.tcp ) {
+        ip::tcp::endpoint endpoint_to_listen(ip::tcp::v4(), json_vars.port);
     
         ip::tcp::acceptor acceptor(service, endpoint_to_listen);
 
-        cout << ">> Server started, port number: " << repr(port) << endl;
+        cout << ">> Server started, port number: " << repr(json_vars.port) << endl;
 
         socket_ptr socket(new ip::tcp::socket(service));
 
@@ -287,7 +201,7 @@ int main(int argc, char *argv[]) {
                     mu.unlock();
                     
                    
-                    delay(1.00/data_up_freq_hz * 1000.00);
+                    delay(1.00/json_vars.data_up_freq_hz * 1000.00);
                 }
             }
             catch (std::exception& e) {
@@ -299,9 +213,9 @@ int main(int argc, char *argv[]) {
         data_thread.join();
     }
     else {
-        ip::udp::endpoint ep_listen(ip::udp::v4(), port);
+        ip::udp::endpoint ep_listen(ip::udp::v4(), json_vars.port);
 
-        cout << ">> Server started, port number: " << repr(port) << endl;
+        cout << ">> Server started, port number: " << repr(json_vars.port) << endl;
 
         udp_socket_ptr socket(new ip::udp::socket(service, ep_listen));
 
@@ -389,7 +303,7 @@ int main(int argc, char *argv[]) {
                     socket->send_to(asio::buffer(write), ep_listen);
                     mu.unlock();
 
-                    delay(1.00/data_up_freq_hz * 1000.00);
+                    delay(1.00/json_vars.data_up_freq_hz * 1000.00);
                 }
             }
             catch (std::exception& e) {
@@ -507,6 +421,124 @@ void help_print() {
     printf("\t<port>: Port to host server on.\n");
     printf("\t<robot_id>: Defines which robot to control. Must be a non-negative number.\n");
     printf("\t<is_blue>: Defines which team to control. Must be either 1 (true) or 0 (false)\n");
+}
+
+argVals arg_proc( int count, char * args[], std::string filename ) {
+    struct argVals ret;
+    char option;
+
+    while ( (option = getopt(count,args,":u")) != -1 ) {
+        switch(option) {
+            case 'u':
+                ret.tcp = false;
+                break;
+            case '?':
+                printf("Unknown option: %c\n", optopt);
+                help_print();
+                ret.failed = true;
+                return ret;
+                break;
+        } 
+    }
+
+    if ( optind + 3 == argc ) {
+        for ( int i = optind; i < argc; i++ ) {
+            if ( i == argc - 3 ) {
+                json_vars.port = std::stoi( std::string(argv[i]), nullptr, 10 );
+            }
+            if ( i == argc - 2 ) {
+                json_vars.robot_id = std::stoi( std::string(argv[i]), nullptr, 10 );
+            }
+            if ( i == argc - 1 ) {
+                json_vars.is_blue = std::stoi( std::string(argv[i]), nullptr, 10 );
+            }
+        }
+    }
+    else {
+        printf("Not enough arguments\n");
+        help_print();
+        ret.failed = true;
+        return ret;
+    }
+    
+    Document document;
+    logger(Info) << "Reading from JSON file.";
+
+    std::ifstream file(filename);
+    if ( !file ) {
+        logger(Error) << "JSON file does not exist.";
+        ret.failed = true;
+        return ret;
+    }
+
+    IStreamWrapper isw(file);
+    document.ParseStream(isw);
+
+    if (document.HasParseError()) {
+        logger(Error) << "JSON file is not formatted correctly.";
+        ret.failed = true;
+        return ret;
+    }
+
+    for (auto& m : document.GetObject()) {
+        //printf("Type of member %s is %s\n", m.name.GetString(), kTypeNames[m.value.GetType()]);
+        /* ================ Connection Information ================= */
+        if ( strncmp(m.name.GetString(), "grSim_vision_ip", 20) == 0 ) {
+            if ( m.value.IsString() ) {
+                ret.grSim_vision_ip = m.value.GetString();
+            }
+            else {
+                logger.log(Error, "grSim_vision_ip is invalid.");
+                ret.failed = true;
+                return ret;
+            }
+        }
+        else if ( strncmp(m.name.GetString(), "grSim_vision_port", 20) == 0 ) {
+            if ( m.value.IsNumber() ) {
+                ret.grSim_vision_port = m.value.GetUint();
+            }
+            else {
+                logger.log(Error, "grSim_vision_port is invalid.");
+                ret.failed = true;
+                return ret;
+            }
+        }
+        else if(strncmp(m.name.GetString(), "grSim_console_ip", 20) == 0) {
+            if ( m.value.IsString() ) {
+                ret.grSim_console_ip = m.value.GetString();
+            }
+            else {
+                logger.log(Error, "grSim_console_ip is invalid.");
+                ret.failed = true;
+                return ret;
+            }
+        }
+        else if(strncmp(m.name.GetString(), "grSim_console_port", 20) == 0) {
+            if ( m.value.IsNumber() ) {
+                ret.grSim_console_port = m.value.GetUint();
+            }
+            else {
+                logger.log(Error, "grSim_console_port is invalid.");
+                ret.failed = true;
+                return ret;
+            }
+        }
+        /* ====================== Server Settings ======================= */
+        else if ( strncmp(m.name.GetString(), "data_up_freq_hz", 20) == 0 ) {
+            if ( m.value.IsNumber() ) {
+                ret.data_up_freq_hz = m.value.GetDouble();
+            }
+            else {
+                logger.log(Error, "data_up_freq_hz is invalid.");
+                ret.failed = true;
+                return ret;
+            }
+        }
+        /* ====================== Robot Parameters ===================== */
+    }  
+    file.close();
+
+    return ret;
 }
 
 std::ostream& operator<<(std::ostream& os, const arma::vec& v)
