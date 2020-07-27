@@ -254,7 +254,7 @@ int main(int argc, char *argv[]) {
         // sent data to the client 
         boost::thread data_thread([&]()     
         {
-            /*
+        
             B_Log logger;
             std::string write;
             VF_Data data;
@@ -263,9 +263,11 @@ int main(int argc, char *argv[]) {
 
             try{
                 while(true){
+                    
                     tdisp = sensors.get_translational_displacement();
                     trans_disp.set_x(tdisp(0));
                     trans_disp.set_y(tdisp(1));
+                   
                     data.set_allocated_translational_displacement(&trans_disp);
 
                     tvel = sensors.get_translational_velocity();
@@ -277,15 +279,20 @@ int main(int argc, char *argv[]) {
                     data.set_rotational_velocity(sensors.get_rotational_velocity());
 
                     data.SerializeToString(&write);
+                    data.release_translational_displacement();
+                    data.release_translational_velocity();
+
                     mu.lock();
                     boost::asio::write(*socket, boost::asio::buffer(write));
                     mu.unlock();
+                    
+                   
                     delay(1.00/data_up_freq_hz * 1000.00);
                 }
             }
             catch (std::exception& e) {
                 logger.log(Error, "[Exception]" + std::string(e.what()));
-            }*/
+            }
         });        
 
         cmd_thread.join();
@@ -299,8 +306,6 @@ int main(int argc, char *argv[]) {
         udp_socket_ptr socket(new ip::udp::socket(service, ep_listen));
 
         boost::array<char, RECEIVE_BUFFER_SIZE> receive_buffer; 
-
-        
 
         // read command from the client
         boost::thread cmd_thread([&]()     
@@ -364,6 +369,7 @@ int main(int argc, char *argv[]) {
                     tdisp = sensors.get_translational_displacement();
                     trans_disp.set_x(tdisp(0));
                     trans_disp.set_y(tdisp(1));
+
                     data.set_allocated_translational_displacement(&trans_disp);
 
                     tvel = sensors.get_translational_velocity();
@@ -375,6 +381,9 @@ int main(int argc, char *argv[]) {
                     data.set_rotational_velocity(sensors.get_rotational_velocity());
 
                     data.SerializeToString(&write);
+
+                    data.release_translational_displacement();
+                    data.release_translational_velocity();
 
                     mu.lock();
                     socket->send_to(asio::buffer(write), ep_listen);
