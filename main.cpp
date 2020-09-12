@@ -41,7 +41,7 @@ struct argVals {
 
 std::ostream& operator<<(std::ostream& os, const arma::vec& v);
 void help_print();
-argVals arg_proc( int count, char * args[], std::string filename );
+argVals arg_proc( int count, char * args[], std::string filename, B_Log * logger );
 
 int main(int argc, char *argv[]) {
     B_Log::static_init();
@@ -61,7 +61,7 @@ int main(int argc, char *argv[]) {
     float kick_vec_y = 0;
     bool drib = false;
 
-    json_vars = arg_proc( argc, argv, "robot_config_json" );
+    json_vars = arg_proc( argc, argv, "robot_config.json", &logger );
 
     if ( json_vars.failed ) {
         return 1;
@@ -423,7 +423,7 @@ void help_print() {
     printf("\t<is_blue>: Defines which team to control. Must be either 1 (true) or 0 (false)\n");
 }
 
-argVals arg_proc( int count, char * args[], std::string filename ) {
+argVals arg_proc( int count, char * args[], std::string filename, B_Log * logger ) {
     struct argVals ret;
     char option;
 
@@ -441,32 +441,32 @@ argVals arg_proc( int count, char * args[], std::string filename ) {
         } 
     }
 
-    if ( optind + 3 == argc ) {
-        for ( int i = optind; i < argc; i++ ) {
-            if ( i == argc - 3 ) {
-                json_vars.port = std::stoi( std::string(argv[i]), nullptr, 10 );
+    if ( optind + 3 == count ) {
+        for ( int i = optind; i < count; i++ ) {
+            if ( i == count - 3 ) {
+                ret.port = std::stoi( std::string(args[i]), nullptr, 10 );
             }
-            if ( i == argc - 2 ) {
-                json_vars.robot_id = std::stoi( std::string(argv[i]), nullptr, 10 );
+            if ( i == count - 2 ) {
+                ret.robot_id = std::stoi( std::string(args[i]), nullptr, 10 );
             }
-            if ( i == argc - 1 ) {
-                json_vars.is_blue = std::stoi( std::string(argv[i]), nullptr, 10 );
+            if ( i == count - 1 ) {
+                ret.is_blue = std::stoi( std::string(args[i]), nullptr, 10 );
             }
         }
     }
     else {
-        printf("Not enough arguments\n");
+        cerr << "Not enough arguments\n";
         help_print();
         ret.failed = true;
         return ret;
     }
     
     Document document;
-    logger(Info) << "Reading from JSON file.";
+    printf("Reading from JSON file.\n");
 
     std::ifstream file(filename);
     if ( !file ) {
-        logger(Error) << "JSON file does not exist.";
+        cerr << "JSON file does not exist.\n";
         ret.failed = true;
         return ret;
     }
@@ -475,7 +475,7 @@ argVals arg_proc( int count, char * args[], std::string filename ) {
     document.ParseStream(isw);
 
     if (document.HasParseError()) {
-        logger(Error) << "JSON file is not formatted correctly.";
+        cerr << "JSON file is not formatted correctly.\n";
         ret.failed = true;
         return ret;
     }
@@ -488,7 +488,7 @@ argVals arg_proc( int count, char * args[], std::string filename ) {
                 ret.grSim_vision_ip = m.value.GetString();
             }
             else {
-                logger.log(Error, "grSim_vision_ip is invalid.");
+                logger->log(Error, "grSim_vision_ip is invalid.");
                 ret.failed = true;
                 return ret;
             }
@@ -498,7 +498,7 @@ argVals arg_proc( int count, char * args[], std::string filename ) {
                 ret.grSim_vision_port = m.value.GetUint();
             }
             else {
-                logger.log(Error, "grSim_vision_port is invalid.");
+                logger->log(Error, "grSim_vision_port is invalid.");
                 ret.failed = true;
                 return ret;
             }
@@ -508,7 +508,7 @@ argVals arg_proc( int count, char * args[], std::string filename ) {
                 ret.grSim_console_ip = m.value.GetString();
             }
             else {
-                logger.log(Error, "grSim_console_ip is invalid.");
+                logger->log(Error, "grSim_console_ip is invalid.");
                 ret.failed = true;
                 return ret;
             }
@@ -518,7 +518,7 @@ argVals arg_proc( int count, char * args[], std::string filename ) {
                 ret.grSim_console_port = m.value.GetUint();
             }
             else {
-                logger.log(Error, "grSim_console_port is invalid.");
+                logger->log(Error, "grSim_console_port is invalid.");
                 ret.failed = true;
                 return ret;
             }
@@ -529,7 +529,7 @@ argVals arg_proc( int count, char * args[], std::string filename ) {
                 ret.data_up_freq_hz = m.value.GetDouble();
             }
             else {
-                logger.log(Error, "data_up_freq_hz is invalid.");
+                logger->log(Error, "data_up_freq_hz is invalid.");
                 ret.failed = true;
                 return ret;
             }
