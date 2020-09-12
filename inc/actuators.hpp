@@ -56,9 +56,7 @@ public:
     void set_included_angle(float angle_degree);
     void set_max_wheel_speed(float max_spd);
     /*
-     * Set motor "target speed" (not immediate speed, acceleration is needed), 
-     * which is essentially motor output pwr (or acceleration that's not constant, 
-     * the smaller the gap between the target and current speed, the smaller the acceleration)
+     * Set motor "target speed" (not immediate speed, acceleration is needed)
      * unit: rad/s
      */
     void set_wheels_speeds(float upper_left, float lower_left, 
@@ -71,7 +69,6 @@ public:
 
 
     /* 
-    * (check the comment for "set_wheels_speeds" function in hpp first)
     * Using a 3D vector (x,y,w) to represent a movement towards
     * a target linear velocity with direction and magnitude of vector (x,y),
     * and at same time a angular velocity with direction(+/-) and magnitude of scalar w

@@ -14,7 +14,7 @@ message VF_Commands {
     /* motion cmd to make the robot move at direction of cartesian vector (x, y)
      * with unit represented by percentage of maximum motor output
      * unit range: (-100 ~ 100) x (-100 ~ 100) where 100 corresponds to 100 percent 
-     * of motor maximum output 
+     * of motor maximum speed 
      */
     Vec_2D translational_output = 2;
 

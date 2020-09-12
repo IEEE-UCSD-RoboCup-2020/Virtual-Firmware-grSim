@@ -14,10 +14,12 @@ Actuator_System::Actuator_System(team_color_t color, int robot_id, udp::endpoint
     this->color = color;
     this->id = robot_id;
     calc_ux_uy();
+    
     //save the thread_ptr copy to extend the life scope of the smart pointer thread_ptr 
     v_thread = thread_ptr(
         new boost::thread(boost::bind(&Actuator_System::send_cmd_thread, this, grsim_console_ep))
     );
+
     mu.lock();
     cond_init_finished.wait(mu);
     mu.unlock();
@@ -73,9 +75,7 @@ void Actuator_System::send_cmd_thread(udp::endpoint& c_ep) {
 
 
 /*
-    * Set motor "target speed" (not immediate speed, acceleration is needed), 
-    * which is essentially motor output pwr (or acceleration that's not constant, 
-    * the smaller the gap between the target and current speed, the smaller the acceleration)
+    * Set motor "target speed" (not immediate speed, acceleration is needed)
     * unit: rad/s
     */
 void Actuator_System::set_wheels_speeds(float upper_left, float lower_left, 
@@ -95,8 +95,12 @@ void Actuator_System::turn_off_dribbler() {
     writer_lock(rwmu);
     dribbler_on = false;
 }
+
+
 void Actuator_System::kick(float speed_x, float speed_y) { 
     writer_lock(rwmu);
+
+    /* To-do: map kicker strength scale unit */
     kick_speed_x = speed_x; 
     kick_speed_y = speed_y;     
 }
@@ -189,7 +193,6 @@ double Actuator_System::max_possible_speed(arma::vec direction) {
 
 
 /*  
- * (check the comment for "set_wheels_speeds" function in hpp first)
  * Using a 3D vector (x,y,w) to represent a movement towards
  * a target linear velocity with direction and magnitude of vector (x,y),
  * and at same time a angular velocity with direction(+/-) and magnitude of scalar w
