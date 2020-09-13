@@ -12,6 +12,10 @@ unsigned int micros(void) {
     return (unsigned int)(double(t.time_since_epoch().count()) / 1000.00f);
 }
 
+/* microsecond delay precision is usually not guarenteed on a general operating system 
+ * This is more for delaying at least xxx microseconds
+ * (general OS is not realtime)
+ */
 void delay_us(unsigned int microseconds) {
     boost::this_thread::sleep_for(boost::chrono::microseconds(microseconds));
 }
