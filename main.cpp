@@ -5,6 +5,9 @@
 #include "sensors.hpp"
 #include "pid.hpp"
 #include "protobuf-auto-gen/vFirmware_API.pb.h"
+#include "rapidjson/document.h"
+#include "rapidjson/istreamwrapper.h"
+#include "rapidjson/error/en.h"
 
 
 #define RECEIVE_BUFFER_SIZE 1024
