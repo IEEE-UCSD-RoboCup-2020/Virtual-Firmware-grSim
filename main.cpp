@@ -103,7 +103,7 @@ int main(int argc, char *argv[]) {
             logger.log(Error, "[Exception]" + std::string(e.what()));
         }
 
-        // read command from the client
+        // read command from the client [TCP]
         boost::thread cmd_thread([&]()     
         {
             B_Log logger;
@@ -120,6 +120,7 @@ int main(int argc, char *argv[]) {
                 while(!init) {
                     
                     asio::read_until(*socket, init_buffer, "\n");
+                    
                     received = std::string(std::istreambuf_iterator<char>(init_stream), {});
                     commands.ParseFromString(received);
 
@@ -135,10 +136,9 @@ int main(int argc, char *argv[]) {
                     logger.log(Info, "Waiting for commands...");
 
                     asio::read_until(*socket, read_buffer, "\n");
+                    
 
-                    mu.lock();
                     received = std::string(std::istreambuf_iterator<char>(input_stream), {});
-                    mu.unlock();
                     
                     commands.ParseFromString(received);
                     trans_vec_x = commands.translational_output().x();
@@ -168,7 +168,7 @@ int main(int argc, char *argv[]) {
 
         });
 
-        // sent data to the client 
+        // sent data to the client [TCP]
         boost::thread data_thread([&]()     
         {
         
@@ -196,12 +196,14 @@ int main(int argc, char *argv[]) {
                     data.set_rotational_velocity(sensors.get_rotational_velocity());
 
                     data.SerializeToString(&write);
+                    write += '\n';
                     data.release_translational_displacement();
                     data.release_translational_velocity();
 
-                    mu.lock();
+
+                    // mu.lock();
                     boost::asio::write(*socket, boost::asio::buffer(write));
-                    mu.unlock();
+                    // mu.unlock();
                     
                    
                     delay(1.00/json_vars.data_up_freq_hz * 1000.00);
@@ -224,7 +226,7 @@ int main(int argc, char *argv[]) {
 
         boost::array<char, RECEIVE_BUFFER_SIZE> receive_buffer; 
 
-        // read command from the client
+        // read command from the client [UDP]
         boost::thread cmd_thread([&]()     
         {
             B_Log logger;
@@ -236,9 +238,9 @@ int main(int argc, char *argv[]) {
             
             try{
                 while(true){
-                    mu.lock();
+                    // mu.lock();
                     num_byte_received = socket->receive_from(asio::buffer(receive_buffer), ep_listen);
-                    mu.unlock();
+                    // mu.unlock();
                     
                     received = std::string(receive_buffer.begin(), receive_buffer.begin() + num_byte_received);
 
@@ -272,7 +274,7 @@ int main(int argc, char *argv[]) {
             }
         });
 
-        // sent data to the client 
+        // sent data to the client [UDP]
         boost::thread data_thread([&]()     
         {
             B_Log logger;
@@ -298,13 +300,14 @@ int main(int argc, char *argv[]) {
                     data.set_rotational_velocity(sensors.get_rotational_velocity());
 
                     data.SerializeToString(&write);
+                    write += '\n';
 
                     data.release_translational_displacement();
                     data.release_translational_velocity();
 
-                    mu.lock();
+                    // mu.lock();
                     socket->send_to(asio::buffer(write), ep_listen);
-                    mu.unlock();
+                    // mu.unlock();
 
                     delay(1.00/json_vars.data_up_freq_hz * 1000.00);
                 }
