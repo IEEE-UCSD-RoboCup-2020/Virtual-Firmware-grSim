@@ -63,6 +63,7 @@ static void on_socket_accepted(asio::ip::tcp::socket& socket,
 static void on_cmd_received(asio::ip::tcp::socket& socket, 
                                 asio::streambuf& read_buf,  
                                 Actuator_System& actuators,
+                                Sensor_System& sensors,
                                 B_Log& logger,  
                                 const system::error_code& error);
 
@@ -86,7 +87,9 @@ static void on_data_sent(asio::ip::tcp::socket& socket,
 int main(int argc, char *argv[]) {
     B_Log::static_init();
     B_Log::set_shorter_format();
-    B_Log::sink->set_filter(severity >= Debug && tag_attr == "Main");
+    B_Log::sink->set_filter(severity >= Info);
+   
+    // B_Log::sink->set_filter(severity >= Debug && tag_attr == "Main");
     
     
     B_Log logger;
@@ -129,8 +132,8 @@ int main(int argc, char *argv[]) {
     if(json_vars.tcp) {
 
         logger.log(Info, "Server started on LocalHost, port number: " + repr(json_vars.port));
-        //data_upstream_period = 1.00/json_vars.data_up_freq_hz * 1000.00;
-        data_upstream_period = 1000;
+        data_upstream_period = 1.00/json_vars.data_up_freq_hz * 1000.00;
+        //data_upstream_period = 1000;
         
         logger.log(Info, "Data Upstream Period (1/frequency) is " + repr(data_upstream_period) + " milliseconds");
         try {
@@ -189,6 +192,7 @@ int main(int argc, char *argv[]) {
 static void on_cmd_received(asio::ip::tcp::socket& socket, 
                                 asio::streambuf& read_buf,  
                                 Actuator_System& actuators,
+                                Sensor_System& sensors,
                                 B_Log& logger,  
                                 const system::error_code& error) {
     if(error) {
@@ -209,6 +213,9 @@ static void on_cmd_received(asio::ip::tcp::socket& socket,
     received = std::string(std::istreambuf_iterator<char>(input_stream), {});
     
     commands.ParseFromString(received);
+    if(commands.init()) {
+        sensors.init();
+    }
     trans_vec_x = commands.translational_output().x();
     trans_vec_y = commands.translational_output().y();
     rotate = commands.rotational_output();
@@ -237,6 +244,7 @@ static void on_cmd_received(asio::ip::tcp::socket& socket,
                                         boost::ref(socket), 
                                         boost::ref(read_buf), 
                                         boost::ref(actuators), 
+                                        boost::ref(sensors),
                                         boost::ref(logger), 
                                         asio::placeholders::error)); 
     
@@ -366,6 +374,7 @@ static void on_socket_accepted(asio::ip::tcp::socket& socket,
                                             boost::ref(socket), 
                                             boost::ref(read_buf), 
                                             boost::ref(actuators), 
+                                            boost::ref(sensors),
                                             boost::ref(logger), 
                                             asio::placeholders::error)); 
     
