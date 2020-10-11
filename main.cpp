@@ -46,23 +46,57 @@ std::ostream& operator<<(std::ostream& os, const arma::vec& v);
 void help_print();
 argVals arg_proc( int count, char * args[], std::string filename, B_Log * logger );
 
+
+/////////////////////////////////////////////////////////////////////////////////
+// async callback handler declarations
+
+static void on_socket_accepted(asio::ip::tcp::socket& socket, 
+                                std::string& write_buf,
+                                asio::streambuf& read_buf, 
+                                Sensor_System& sensors, 
+                                Actuator_System& actuators,
+                                deadline_timer& timer,
+                                unsigned int data_up_period,
+                                B_Log& logger,  
+                                const system::error_code& error);
+
+static void on_cmd_received(asio::ip::tcp::socket& socket, 
+                                asio::streambuf& read_buf,  
+                                Actuator_System& actuators,
+                                Sensor_System& sensors,
+                                B_Log& logger,  
+                                const system::error_code& error);
+
+static void on_timer_expired(asio::ip::tcp::socket& socket,
+                              std::string& write_buf,
+                              Sensor_System& sensors,
+                              deadline_timer& timer,
+                              unsigned int data_up_period,
+                              B_Log& logger,
+                              const system::error_code& error);
+                              
+static void on_data_sent(asio::ip::tcp::socket& socket,
+                              std::string& write_buf,
+                              Sensor_System& sensors,
+                              deadline_timer& timer,
+                              unsigned int data_up_period,
+                              B_Log& logger,
+                              const system::error_code& error);
+/////////////////////////////////////////////////////////////////////////////////
+
 int main(int argc, char *argv[]) {
     B_Log::static_init();
+    B_Log::set_shorter_format();
+    // B_Log::sink->set_filter(severity == Debug && tag_attr == "Main");
     B_Log::sink->set_filter(severity >= Info);
     
+    
     B_Log logger;
+    logger.add_tag("Main");
 
     struct argVals json_vars;
 
-    /* Protobuf Variables */
-    VF_Commands commands;
-    bool init = false;
-    float trans_vec_x = 0;
-    float trans_vec_y = 0;
-    float rotate = 0;
-    float kick_vec_x = 0;
-    float kick_vec_y = 0;
-    bool drib = false;
+
 
     json_vars = arg_proc( argc, argv, "robot_config.json", &logger );
 
@@ -79,340 +113,297 @@ int main(int argc, char *argv[]) {
     udp::endpoint grsim_console_ep(ip::address::from_string(json_vars.grSim_console_ip), json_vars.grSim_console_port);
     
     // instantiate sensor and actuator systems
+    // these systems get started running in their constructors
     Sensor_System sensors(json_vars.is_blue?BLUE:YELLOW, json_vars.robot_id, grsim_ssl_vision_ep);
     Actuator_System actuators(json_vars.is_blue?BLUE:YELLOW, json_vars.robot_id, grsim_console_ep);
 
     boost::mutex mu; 
+    asio::streambuf read_buf;
+    std::string write_buf;
 
-    if ( json_vars.tcp ) {
-        ip::tcp::endpoint endpoint_to_listen(ip::tcp::v4(), json_vars.port);
-    
-        ip::tcp::acceptor acceptor(service, endpoint_to_listen);
+    ip::tcp::endpoint endpoint_to_listen(ip::tcp::v4(), json_vars.port);
+    ip::tcp::acceptor acceptor(service, endpoint_to_listen);
+    ip::tcp::socket socket(service);
 
-        cout << ">> Server started, port number: " << repr(json_vars.port) << endl;
+    deadline_timer timer(service);
+    unsigned int data_upstream_period;
 
-        socket_ptr socket(new ip::tcp::socket(service));
+    if(json_vars.tcp) {
 
+        logger.log(Info, "Server started on LocalHost, port number: " + repr(json_vars.port));
+        data_upstream_period = 1.00/json_vars.data_up_freq_hz * 1000.00;
+        //data_upstream_period = 1000;
+        
+        logger.log(Info, "Data Upstream Period (1/frequency) is " + repr(data_upstream_period) + " milliseconds");
         try {
-            acceptor.accept(*socket); // blocking func
+            acceptor.async_accept(socket, boost::bind(&on_socket_accepted, 
+                                                boost::ref(socket),
+                                                boost::ref(write_buf), 
+                                                boost::ref(read_buf), 
+                                                boost::ref(sensors), 
+                                                boost::ref(actuators),
+                                                boost::ref(timer), 
+                                                data_upstream_period,
+                                                boost::ref(logger), 
+                                                asio::placeholders::error)); 
 
-            cout << "Accepted socket request from: " << socket->remote_endpoint().address().to_string() << endl;
+            
         }
         catch(std::exception& e)
         {
             logger.log(Error, "[Exception]" + std::string(e.what()));
         }
 
-        // read command from the client
-        boost::thread cmd_thread([&]()     
-        {
-            B_Log logger;
-            asio::streambuf read_buffer;
-            std::istream input_stream(&read_buffer);
-            std::string received;
 
-            asio::streambuf init_buffer;
-            std::istream init_stream(&init_buffer);
-
-            try {
-                logger.log(Info, "Waiting for sensor init request...\n");
-                
-                while(!init) {
-                    
-                    asio::read_until(*socket, init_buffer, "\n");
-                    received = std::string(std::istreambuf_iterator<char>(init_stream), {});
-                    commands.ParseFromString(received);
-
-                    init = commands.init();
-                    logger.log(Info, repr(init));
-                    if(init) sensors.init();
-                }
-
-                logger.log(Info, "Init successful!");
-                
-                while(true){
-
-                    logger.log(Info, "Waiting for commands...");
-
-                    asio::read_until(*socket, read_buffer, "\n");
-
-                    mu.lock();
-                    received = std::string(std::istreambuf_iterator<char>(input_stream), {});
-                    mu.unlock();
-                    
-                    commands.ParseFromString(received);
-                    trans_vec_x = commands.translational_output().x();
-                    trans_vec_y = commands.translational_output().y();
-                    rotate = commands.rotational_output();
-                    kick_vec_x = commands.kicker().x();
-                    kick_vec_y = commands.kicker().y();
-                    drib = commands.dribbler();
-
-                    logger.log(Info,
-                        "\ntranslational_output x y: " + repr(trans_vec_x) + " " + repr(trans_vec_y) + "\n" 
-                        + "rotational_output: " + repr(rotate) + "\n"
-                        + "kicker x y: " + repr(kick_vec_x) + " " + repr(kick_vec_y) + "\n"
-                        + "dribbler: " + repr(drib) + "\n");
-
-                    
-                    arma::vec trans_vec = {trans_vec_x, trans_vec_y, rotate};
-                    actuators.move(trans_vec);
-                    actuators.kick(kick_vec_x, kick_vec_y);
-                    if(drib) actuators.turn_on_dribbler();
-                    else actuators.turn_off_dribbler();
-                }
-            }
-            catch (std::exception& e) {
-                logger.log(Error, "[Exception]" + std::string(e.what()));
-            }
-
-        });
-
-        // sent data to the client 
-        boost::thread data_thread([&]()     
-        {
-        
-            B_Log logger;
-            std::string write;
-            VF_Data data;
-            arma::vec tdisp, tvel;
-            Vec_2D trans_disp, trans_vel;
-
-            try{
-                while(true){
-                    
-                    tdisp = sensors.get_translational_displacement();
-                    trans_disp.set_x(tdisp(0));
-                    trans_disp.set_y(tdisp(1));
-                   
-                    data.set_allocated_translational_displacement(&trans_disp);
-
-                    tvel = sensors.get_translational_velocity();
-                    trans_vel.set_x(tvel(0));
-                    trans_vel.set_y(tvel(1));
-                    data.set_allocated_translational_velocity(&trans_vel);
-                    
-                    data.set_rotational_displacement(sensors.get_rotational_displacement());
-                    data.set_rotational_velocity(sensors.get_rotational_velocity());
-
-                    data.SerializeToString(&write);
-                    data.release_translational_displacement();
-                    data.release_translational_velocity();
-
-                    mu.lock();
-                    boost::asio::write(*socket, boost::asio::buffer(write));
-                    mu.unlock();
-                    
-                   
-                    delay(1.00/json_vars.data_up_freq_hz * 1000.00);
-                }
-            }
-            catch (std::exception& e) {
-                logger.log(Error, "[Exception]" + std::string(e.what()));
-            }
-        });        
-
-        cmd_thread.join();
-        data_thread.join();
     }
     else {
-        ip::udp::endpoint ep_listen(ip::udp::v4(), json_vars.port);
-
-        cout << ">> Server started, port number: " << repr(json_vars.port) << endl;
-
-        udp_socket_ptr socket(new ip::udp::socket(service, ep_listen));
-
-        boost::array<char, RECEIVE_BUFFER_SIZE> receive_buffer; 
-
-        // read command from the client
-        boost::thread cmd_thread([&]()     
-        {
-            B_Log logger;
-
-            std::string received;
-            unsigned int num_byte_received;
-
-            sensors.init();
-            
-            try{
-                while(true){
-                    mu.lock();
-                    num_byte_received = socket->receive_from(asio::buffer(receive_buffer), ep_listen);
-                    mu.unlock();
-                    
-                    received = std::string(receive_buffer.begin(), receive_buffer.begin() + num_byte_received);
-
-                    logger.log(Debug, "xxx:" + received);
-
-                    commands.ParseFromString(received);
-                    trans_vec_x = commands.translational_output().x();
-                    trans_vec_y = commands.translational_output().y();
-                    rotate = commands.rotational_output();
-                    kick_vec_x = commands.kicker().x();
-                    kick_vec_y = commands.kicker().y();
-                    drib = commands.dribbler();
-
-                    logger.log(Info,
-                        "\ntranslational_output x y: " + repr(trans_vec_x) + " " + repr(trans_vec_y) + "\n" 
-                        + "rotational_output: " + repr(rotate) + "\n"
-                        + "kicker x y: " + repr(kick_vec_x) + " " + repr(kick_vec_y) + "\n"
-                        + "dribbler: " + repr(drib) + "\n");
-
-                    
-                    arma::vec trans_vec = {trans_vec_x, trans_vec_y, rotate};
-                    actuators.move(trans_vec);
-                    actuators.kick(kick_vec_x, kick_vec_y);
-                    if(drib) actuators.turn_on_dribbler();
-                    else actuators.turn_off_dribbler();
-
-                }
-            }
-            catch (std::exception& e) {
-                logger.log(Error, "[Exception]" + std::string(e.what()));
-            }
-        });
-
-        // sent data to the client 
-        boost::thread data_thread([&]()     
-        {
-            B_Log logger;
-            std::string write;
-            VF_Data data;
-            arma::vec tdisp, tvel;
-            Vec_2D trans_disp, trans_vel;
-
-            try{
-                while(true){
-                    tdisp = sensors.get_translational_displacement();
-                    trans_disp.set_x(tdisp(0));
-                    trans_disp.set_y(tdisp(1));
-
-                    data.set_allocated_translational_displacement(&trans_disp);
-
-                    tvel = sensors.get_translational_velocity();
-                    trans_vel.set_x(tvel(0));
-                    trans_vel.set_y(tvel(1));
-                    data.set_allocated_translational_velocity(&trans_vel);
-                    
-                    data.set_rotational_displacement(sensors.get_rotational_displacement());
-                    data.set_rotational_velocity(sensors.get_rotational_velocity());
-
-                    data.SerializeToString(&write);
-
-                    data.release_translational_displacement();
-                    data.release_translational_velocity();
-
-                    mu.lock();
-                    socket->send_to(asio::buffer(write), ep_listen);
-                    mu.unlock();
-
-                    delay(1.00/json_vars.data_up_freq_hz * 1000.00);
-                }
-            }
-            catch (std::exception& e) {
-                logger.log(Error, "[Exception]" + std::string(e.what()));
-            }
-        }); 
-
-        cmd_thread.join();
-        data_thread.join();
+        logger(Error) << "UDP version is no longer supported, please use TCP";
     }
 
+
+    service.run();
     return 0;
 
-//     udp::endpoint grsim_ssl_vision_ep(ip::address::from_string("224.5.23.2"), 10020);
-//     udp::endpoint grsim_console_ep(ip::address::from_string(LOCAL_HOST), 20011);
-    
-//     Sensor_System sensors(BLUE, 0, grsim_ssl_vision_ep);
-//     Actuator_System actuators(BLUE, 0, grsim_console_ep);
-
-    
+}
 
 
-//     delay(500); 
-//     /*
-//     actuators.move(arma::vec("100 0 0"));
-//     actuators.move(arma::vec("0 100 0"));
-//     actuators.move(arma::vec("0 -100 0"));
-//     actuators.move(arma::vec("-100 0 0"));
-//     actuators.move(arma::vec("70.70 70.70 0"));
-// */
-//     // sqrt( x^2 + y^2 + z^2 ) <= 100
-//     // x^2 + y^2 <= 10000
-
-//     // mute all logs
-//     B_Log::sink->set_filter(severity > Fatal);
 
 
-//     double m1, m2, m3, m4;
-//     double vx, vy, vw;
-//     vec d = {0, 0}, v = {0, 0}, prev_d = {0, 0}, prev_v = {0, 0};
-//     double theta, omega, prev_theta = 0.00, prev_omega = 0.00;
-//     while(1) {
-//         // std::cin >> m1 >> m2 >> m3 >> m4;
-//         std::cin >> vx >> vy >> vw;
-//         vec mv = {vx, vy, vw};
-//         B_Log::set_shortest_format();
-//         B_Log::sink->set_filter(tag_attr == "motion cmd" && severity == Trace);
-        
-//         sensors.init();
-//         int t0 = millis();
-//         while(millis() - t0 < 1000) {
-//             // actuators.set_wheels_speeds(m1, m2, m3, m4);
-//             actuators.move(mv);
-//             d = sensors.get_translational_displacement();
-//             v = sensors.get_translational_velocity();
-//             theta = sensors.get_rotational_displacement();
-//             omega = sensors.get_rotational_velocity();
-//             // if(!arma::approx_equal(v, prev_v, "absdiff", 0,00001) || omega != prev_omega ) { 
-//                 std::cout << d << " " 
-//                           << v << " "
-//                           << theta << " " 
-//                           << omega 
-//                           << " time: " << millis() - t0 << " ms" << std::endl;  
-//             // }
-//             delay(10);
-//             prev_d = d; prev_v = v; prev_theta = theta; prev_omega = omega;
-//         }
-        
-//         B_Log::sink->set_filter(severity >= Info);
 
-//         t0 = millis();
-//         while(millis() - t0 < 100) actuators.stop();
-//     }
 
-/*
-    boost::mutex mu;
-    boost::thread *threads[6];
-    for(int i = 0; i < 6; i++) {
-        threads[i] = new boost::thread( [i, &mu] () -> void  {
-            io_service ios;
-            
-            mu.lock();
-            std::cout << i << std::endl;
-            mu.unlock();
-            udp::endpoint ep_grsim_console(ip::address::from_string(LOCAL_HOST), 20011);
-            GrSim_Console console(ios, ep_grsim_console);
 
-            udp::endpoint grsim_ssl_vision_ep(ip::address::from_string("224.5.23.3"), 10020);
-            GrSim_Vision sim_vision(ios, grsim_ssl_vision_ep);
 
-            while(1) {
-                float speed = (i + 1) * 10;
-                console.send_command(false, i, speed, speed, speed, speed, 0, 0, false);
-                sim_vision.receive_packet();
-                delay(10);
-            }
-        });
+
+
+
+
+
+
+
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+static void on_cmd_received(asio::ip::tcp::socket& socket, 
+                                asio::streambuf& read_buf,  
+                                Actuator_System& actuators,
+                                Sensor_System& sensors,
+                                B_Log& logger,  
+                                const system::error_code& error) {
+    if(error) {
+        logger.log(Error, error.message());
+        return;
     }
+    VF_Commands commands;
+    bool init = false;
+    float trans_vec_x = 0;
+    float trans_vec_y = 0;
+    float rotate = 0;
+    float kick_vec_x = 0;
+    float kick_vec_y = 0;
+    bool drib = false;
 
-    for(auto& thread : threads) {
-        thread->join();
-        delete thread;
+    std::istream input_stream(&read_buf);
+    std::string received;
+    received = std::string(std::istreambuf_iterator<char>(input_stream), {});
+    
+    commands.ParseFromString(received);
+    if(commands.init()) {
+        sensors.init();
     }
-*/
+    trans_vec_x = commands.translational_output().x();
+    trans_vec_y = commands.translational_output().y();
+    rotate = commands.rotational_output();
+    kick_vec_x = commands.kicker().x();
+    kick_vec_y = commands.kicker().y();
+    drib = commands.dribbler();
+
+    arma::vec mov_vec = {trans_vec_x, trans_vec_y, rotate};
+    actuators.move(mov_vec);
+    actuators.kick(kick_vec_x, kick_vec_y);
+    if(drib) actuators.turn_on_dribbler();
+    else actuators.turn_off_dribbler();
+
+    std::ostringstream debug_out_stream;
+    debug_out_stream << "CMD Received: " 
+                     << "Mov"  << mov_vec << " "
+                     << "Kick" << "<" << kick_vec_x << ", " << kick_vec_y << "> "
+                     << "Drib" << "<" << drib << ">"
+                     << std::endl; 
+
+    logger.log(Info, debug_out_stream.str());
+    
+    // schedule the next task (similar to recursion)
+    boost::asio::async_read_until(socket, read_buf, "\n",
+                            boost::bind(&on_cmd_received, 
+                                        boost::ref(socket), 
+                                        boost::ref(read_buf), 
+                                        boost::ref(actuators), 
+                                        boost::ref(sensors),
+                                        boost::ref(logger), 
+                                        asio::placeholders::error)); 
+    
+}
+
+static void on_timer_expired(asio::ip::tcp::socket& socket,
+                              std::string& write_buf,
+                              Sensor_System& sensors,
+                              deadline_timer& timer,
+                              unsigned int data_up_period,
+                              B_Log& logger,
+                              const system::error_code& error) {
+    if(error) {
+        logger.log(Error, error.message());
+        return;
+    }
+    VF_Data data;
+    arma::vec tdisp, tvel;
+    Vec_2D trans_disp, trans_vel;
+    float rotat_disp, rotat_vel;
+    std::ostringstream debug_out_stream;
+
+    write_buf.clear();
+
+    tdisp = sensors.get_translational_displacement();
+    trans_disp.set_x(tdisp(0));
+    trans_disp.set_y(tdisp(1));
+    data.set_allocated_translational_displacement(&trans_disp);
+
+    tvel = sensors.get_translational_velocity();
+    trans_vel.set_x(tvel(0));
+    trans_vel.set_y(tvel(1));
+    data.set_allocated_translational_velocity(&trans_vel);
+    
+    rotat_disp = sensors.get_rotational_displacement();
+    rotat_vel = sensors.get_rotational_velocity();
+    data.set_rotational_displacement(rotat_disp);
+    data.set_rotational_velocity(rotat_vel);
+
+    data.SerializeToString(&write_buf);
+    write_buf += "\n";
+
+    debug_out_stream << "Data Sent: "
+                     << "Trans[" << tdisp << "] ["  
+                     << tvel << "] "  
+                     << "Rotat[" << rotat_disp << "] ["
+                     << rotat_vel << "]" << std::endl;
+
+    logger.log(Debug, debug_out_stream.str());
+
+    data.release_translational_displacement();
+    data.release_translational_velocity();
+
+    // schedule the next task (similar to recursion)
+    boost::asio::async_write(socket, boost::asio::buffer(write_buf),
+                                boost::bind(&on_data_sent, 
+                                            boost::ref(socket),
+                                            boost::ref(write_buf),
+                                            boost::ref(sensors),
+                                            boost::ref(timer), 
+                                            data_up_period,
+                                            boost::ref(logger), 
+                                            asio::placeholders::error));
+
 
 }
+static void on_data_sent(asio::ip::tcp::socket& socket,
+                              std::string& write_buf,
+                              Sensor_System& sensors,
+                              deadline_timer& timer,
+                              unsigned int data_up_period,
+                              B_Log& logger,
+                              const system::error_code& error) {
+    if(error) {
+        logger.log(Error, error.message());
+        return;
+    }
+
+    // schedule the next task (similar to recursion)
+    timer.expires_from_now(posix_time::milliseconds(data_up_period));
+    timer.async_wait(boost::bind(&on_timer_expired, 
+                                boost::ref(socket),
+                                boost::ref(write_buf),
+                                boost::ref(sensors),
+                                boost::ref(timer), 
+                                data_up_period,
+                                boost::ref(logger), 
+                                asio::placeholders::error)
+                                );
+}
+
+
+
+static void on_socket_accepted(asio::ip::tcp::socket& socket, 
+                                std::string& write_buf,
+                                asio::streambuf& read_buf, 
+                                Sensor_System& sensors, 
+                                Actuator_System& actuators,
+                                deadline_timer& timer,
+                                unsigned int data_up_period,
+                                B_Log& logger,  
+                                const system::error_code& error) {
+    if(error) {
+        logger.log(Error, error.message());
+        return;
+    }
+    // To-Do : add color code
+    logger.log(Info, "Accepted socket request from: " 
+                        + socket.remote_endpoint().address().to_string());
+
+    
+    // timer driven Data upstream async task
+    timer.expires_from_now(posix_time::milliseconds(data_up_period));
+    timer.async_wait(boost::bind(&on_timer_expired, 
+                                boost::ref(socket),
+                                boost::ref(write_buf),
+                                boost::ref(sensors),
+                                boost::ref(timer), 
+                                data_up_period,
+                                boost::ref(logger), 
+                                asio::placeholders::error)
+                                );
+    
+    // socket event driven Command download async task
+    boost::asio::async_read_until(socket, read_buf, "\n",
+                                boost::bind(&on_cmd_received, 
+                                            boost::ref(socket), 
+                                            boost::ref(read_buf), 
+                                            boost::ref(actuators), 
+                                            boost::ref(sensors),
+                                            boost::ref(logger), 
+                                            asio::placeholders::error)); 
+    
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void help_print() {
     printf("Command:\n");
