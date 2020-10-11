@@ -156,4 +156,5 @@ std::ostream& operator<< (std::ostream& strm, severity_level level)
 
 void B_Log::log(severity_level sev, std::string str) {
     BOOST_LOG_SEV(*(this->slog), sev) << std::string(str);
+    sink.get()->flush();
 }
