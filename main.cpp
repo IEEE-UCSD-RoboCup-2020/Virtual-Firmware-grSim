@@ -87,9 +87,8 @@ static void on_data_sent(asio::ip::tcp::socket& socket,
 int main(int argc, char *argv[]) {
     B_Log::static_init();
     B_Log::set_shorter_format();
+    // B_Log::sink->set_filter(severity == Debug && tag_attr == "Main");
     B_Log::sink->set_filter(severity >= Info);
-   
-    // B_Log::sink->set_filter(severity >= Debug && tag_attr == "Main");
     
     
     B_Log logger;
@@ -288,9 +287,9 @@ static void on_timer_expired(asio::ip::tcp::socket& socket,
     write_buf += "\n";
 
     debug_out_stream << "Data Sent: "
-                     << "Trans[" << tdisp << " "  
-                     << rotat_disp << "] " 
-                     << "Rotat[" << tvel << " "
+                     << "Trans[" << tdisp << "] ["  
+                     << tvel << "] "  
+                     << "Rotat[" << rotat_disp << "] ["
                      << rotat_vel << "]" << std::endl;
 
     logger.log(Debug, debug_out_stream.str());
