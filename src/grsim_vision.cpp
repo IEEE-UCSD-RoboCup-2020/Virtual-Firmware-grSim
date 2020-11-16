@@ -11,7 +11,6 @@ using byte = unsigned char;
 
 
 
-
 vec GrSim_Vision::blue_loc_vecs[NUM_ROBOTS];
 vec GrSim_Vision::yellow_loc_vecs[NUM_ROBOTS];
 double timestamp;
@@ -29,11 +28,17 @@ void GrSim_Vision::publish_robots_vinfo(
     for(auto& bot : robots) {
         
         if(team_color == BLUE) {
+            if(bot.robot_id() >= NUM_ROBOTS || NUM_ROBOTS < 0){
+                continue;
+            }
             blue_loc_vecs[bot.robot_id()] = {-bot.y(), bot.x(), bot.orientation()};
             // print_robot_vinfo(bot); // for debugging
         }
         if(team_color == YELLOW) {
-            yellow_loc_vecs[bot.robot_id()] = {-bot.y(), bot.x(), bot.orientation()};
+            if(bot.robot_id() >= NUM_ROBOTS || NUM_ROBOTS < 0){
+                continue;
+            }
+            yellow_loc_vecs[bot.robot_id()] = {(double)-bot.y(), (double)bot.x(), (double)bot.orientation()};
             // print_robot_vinfo(bot); // for debugging
         }
     }
@@ -130,7 +135,7 @@ void GrSim_Vision::async_receive_handler(std::size_t num_bytes_received,
     double t_curr = packet.detection().t_capture();
 
 
-
+    
     publish_robots_vinfo(packet.detection().robots_blue(), BLUE);
     publish_robots_vinfo(packet.detection().robots_yellow(), YELLOW);
 

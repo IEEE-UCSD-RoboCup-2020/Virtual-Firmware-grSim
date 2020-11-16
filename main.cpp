@@ -88,7 +88,6 @@ int main(int argc, char *argv[]) {
     B_Log::static_init();
     B_Log::set_shorter_format();
     // B_Log::sink->set_filter(severity == Debug && tag_attr == "Main");
-    B_Log::sink->set_filter(severity >= Info);
     
     
     B_Log logger;
