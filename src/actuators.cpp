@@ -208,7 +208,7 @@ double Actuator_System::max_possible_speed(arma::vec direction) {
  */
 void Actuator_System::move(arma::vec pwr_vec_3D) {
     if(arma::norm(pwr_vec_3D) > 100.00) {
-        logger(Error) << "Warning: move vector exceeds magnitude 100.00";
+        logger(Error) << "Error: move vector exceeds magnitude 100.00";
     }
 
     vec trans_mags = {pwr_vec_3D(0), pwr_vec_3D(1)};
