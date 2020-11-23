@@ -207,8 +207,9 @@ double Actuator_System::max_possible_speed(arma::vec direction) {
  * Underline assumption: linear & angular motion are linearly independent  
  */
 void Actuator_System::move(arma::vec pwr_vec_3D) {
-    if(arma::norm(pwr_vec_3D) > 100.00) {
+    if(arma::norm(pwr_vec_3D) > 100.1) { // added .1 for rounding issue
         logger(Error) << "Error: move vector exceeds magnitude 100.00";
+        logger.log(Info, "move vector: " + repr(arma::norm(pwr_vec_3D)));
     }
 
     vec trans_mags = {pwr_vec_3D(0), pwr_vec_3D(1)};
