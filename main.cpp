@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
     B_Log::static_init();
     B_Log::set_shorter_format();
     // B_Log::sink->set_filter(severity == Debug && tag_attr == "Main");
-    
+    B_Log::sink->set_filter(severity > Error); 
     
     B_Log logger;
     logger.add_tag("Main");
@@ -448,18 +448,18 @@ argVals arg_proc( int count, char * args[], std::string filename, B_Log * logger
         }
     }
     else {
-        cerr << "Not enough arguments\n";
+        (*logger)(Error) << "Not enough arguments\n";
         help_print();
         ret.failed = true;
         return ret;
     }
     
     Document document;
-    printf("Reading from JSON file.\n");
+    (*logger)(Info) << "Reading from JSON file";
 
     std::ifstream file(filename);
     if ( !file ) {
-        cerr << "JSON file does not exist.\n";
+        (*logger)(Error) << "JSON file does not exist.\n";
         ret.failed = true;
         return ret;
     }
@@ -468,7 +468,7 @@ argVals arg_proc( int count, char * args[], std::string filename, B_Log * logger
     document.ParseStream(isw);
 
     if (document.HasParseError()) {
-        cerr << "JSON file is not formatted correctly.\n";
+        (*logger)(Error) << "JSON file is not formatted correctly.\n";
         ret.failed = true;
         return ret;
     }
