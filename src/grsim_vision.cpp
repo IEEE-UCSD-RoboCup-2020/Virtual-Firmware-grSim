@@ -15,6 +15,14 @@ vec GrSim_Vision::blue_loc_vecs[NUM_ROBOTS];
 vec GrSim_Vision::yellow_loc_vecs[NUM_ROBOTS];
 double timestamp;
 
+
+static double norm_ang(double ang) {
+    ang = (ang > 180) ? ang - 360 : ang;
+    ang = (ang < -180) ? ang + 360 : ang;
+    return ang;
+}
+
+
 void GrSim_Vision::publish_robots_vinfo(
     const google::protobuf::RepeatedPtrField<SSL_DetectionRobot>& robots,
     team_color_t team_color) 
@@ -38,7 +46,7 @@ void GrSim_Vision::publish_robots_vinfo(
             if(bot.robot_id() >= NUM_ROBOTS || NUM_ROBOTS < 0){
                 continue;
             }
-            yellow_loc_vecs[bot.robot_id()] = {(double)-bot.y(), (double)bot.x(), (double)bot.orientation()};
+            yellow_loc_vecs[bot.robot_id()] = {bot.y(), -bot.x(), bot.orientation()};
             // print_robot_vinfo(bot); // for debugging
         }
     }
@@ -178,7 +186,7 @@ vec GrSim_Vision::get_robot_location(team_color_t color, int robot_id) {
 float GrSim_Vision::get_robot_orientation(team_color_t color, int robot_id) {
     reader_lock(rwmu);
     return color == BLUE ? to_degree( GrSim_Vision::blue_loc_vecs[robot_id](2) ) 
-                         : to_degree( GrSim_Vision::yellow_loc_vecs[robot_id](2) );
+                         : norm_ang(to_degree( GrSim_Vision::yellow_loc_vecs[robot_id](2)) + 180);
 }
 
 double GrSim_Vision::get_timestamp_ms() {
