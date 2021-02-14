@@ -1,6 +1,7 @@
 #Author: Hongtao Zhang
 
 .DEFAULT_GOAL:=default
+OS := $(shell uname)
 
 ### colored echo
 RED='\033[0;31m'
@@ -26,7 +27,11 @@ PROTODEF_SRC = $(wildcard $(PROTO)/*.proto)
 #COMPILER = g++
 COMPILER = clang++ -Qunused-arguments
 CPP_STANDARD = -std=c++17
-BOOST_LIB = -lboost_system -lboost_thread -lpthread -lboost_chrono -DBOOST_LOG_DYN_LINK -lboost_log 
+ifeq ($(OS),Darwin)
+    BOOST_LIB = -lboost_system -lboost_thread-mt -lpthread -lboost_chrono -DBOOST_LOG_DYN_LINK -lboost_log-mt
+else
+    BOOST_LIB = -lboost_system -lboost_thread -lpthread -lboost_chrono -DBOOST_LOG_DYN_LINK -lboost_log
+endif
 SCI_MATH_LIB = -larmadillo
 PROTO_LIB = -L/usr/local/lib -lprotobuf
 
