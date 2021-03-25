@@ -37,6 +37,35 @@ struct argVals {
     bool failed = false;
 };
 
+
+/**
+ * Get ip from domain name
+ * Source: https://www.binarytides.com/hostname-to-ip-address-c-sockets-linux/
+ */
+
+int hostname_to_ip(const char* hostname , char* ip)
+{
+	struct hostent *he;
+	struct in_addr **addr_list;
+	int i;
+		
+	if ( (he = gethostbyname( hostname ) ) == NULL) {
+		// get the host info
+		herror("gethostbyname");
+		return 1;
+	}
+
+	addr_list = (struct in_addr **) he->h_addr_list;
+	
+	for(i = 0; addr_list[i] != NULL; i++) {
+		//Return the first one;
+		strcpy(ip , inet_ntoa(*addr_list[i]) );
+		return 0;
+	}
+	
+	return 1;
+}
+
 /* Some constants:
  * motor max speed around 416 rpm at 1N*m torque load
  * 416 rpm ~= 43.56 rad/s 
@@ -106,6 +135,12 @@ int main(int argc, char *argv[]) {
 // ================================================================================================================ //
 
     io_service service;
+
+    // convert from possibly hostname to ip
+    char ip[100];
+    hostname_to_ip(json_vars.grSim_console_ip.c_str() , ip);
+    std::string str(ip);
+    json_vars.grSim_console_ip = str;
 
     // instantiate grSim simulator endpoints
     udp::endpoint grsim_ssl_vision_ep(ip::address::from_string(json_vars.grSim_vision_ip), json_vars.grSim_vision_port);
